@@ -187,7 +187,7 @@ async def advance_start(interaction: discord.Interaction, days: int = 4):
     save()
 
     await interaction.response.send_message(
-        f"@everyone 🏈 Advance started for {days} days!",
+        f"@everyone 🏈 Advance slated for {days} days!",
         allowed_mentions=discord.AllowedMentions(everyone=True)
     )
 
