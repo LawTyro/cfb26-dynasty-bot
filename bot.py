@@ -126,7 +126,7 @@ async def reminder_loop():
                         if channel:
 
                             await channel.send(
-                                "🚨 @everyone DYNASTY IS ADVANCING NOW!",
+                                "🚨 @everyone DYNASTY ADVANCE WILL COMMENCE SOON!",
                                 allowed_mentions=discord.AllowedMentions(
                                     everyone=True
                                 )
@@ -337,7 +337,7 @@ async def advance_start(
     save()
 
     await interaction.response.send_message(
-        "@everyone 🏈 Advance started!",
+        "@everyone 🏈 Timer for Advancement commenced!",
         allowed_mentions=discord.AllowedMentions(
             everyone=True
         )
