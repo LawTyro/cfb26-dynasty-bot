@@ -28,7 +28,8 @@ data = {
     "advance_end": None,
     "channel_id": None,
     "last_reminder_day": None,
-    "all_ready_sent": False
+    "all_ready_sent": False,
+    "advance_days": 4
 }
 
 
@@ -46,10 +47,10 @@ def load():
 
     try:
         with open(DATA_FILE, "r") as f:
-            data = json.load(f)
+            loaded = json.load(f)
 
-            if "all_ready_sent" not in data:
-                data["all_ready_sent"] = False
+            # preserve defaults for new fields
+            data.update(loaded)
 
     except FileNotFoundError:
         save()
@@ -64,19 +65,23 @@ def get_remaining():
     if not data["advance_end"]:
         return None
 
-    end = datetime.fromisoformat(data["advance_end"])
+    end = datetime.fromisoformat(
+        data["advance_end"]
+    )
 
-    return end - datetime.now(timezone.utc)
+    return end - datetime.now(
+        timezone.utc
+    )
 
 
 def everyone_ready():
 
-    if not data["players"]:
-        return False
-
-    return all(
-        player in data["ready"]
-        for player in data["players"]
+    return (
+        bool(data["players"])
+        and all(
+            player in data["ready"]
+            for player in data["players"]
+        )
     )
 
 
@@ -91,7 +96,9 @@ def get_unready_names(guild):
             member = guild.get_member(uid)
 
             if member:
-                names.append(member.display_name)
+                names.append(
+                    member.display_name
+                )
 
     return names
 
@@ -114,7 +121,9 @@ async def reminder_loop():
 
                 if remaining:
 
-                    seconds = remaining.total_seconds()
+                    seconds = (
+                        remaining.total_seconds()
+                    )
 
                     # ADVANCE COMPLETE
                     if seconds <= 0:
@@ -126,7 +135,7 @@ async def reminder_loop():
                         if channel:
 
                             await channel.send(
-                                "🚨 @everyone DYNASTY ADVANCE WILL COMMENCE SOON!",
+                                "🚨 @everyone DYNASTY IS ADVANCING NOW!",
                                 allowed_mentions=discord.AllowedMentions(
                                     everyone=True
                                 )
@@ -140,15 +149,20 @@ async def reminder_loop():
 
                     else:
 
-                        # FIXED DAY CALCULATION
                         days_left = math.ceil(
-                            remaining.total_seconds() / 86400
+                            remaining.total_seconds()
+                            / 86400
                         )
 
-                        # DAILY REMINDER ONLY
-                        if data["last_reminder_day"] != days_left:
+                        # DAILY REMINDER
+                        if (
+                            data["last_reminder_day"]
+                            != days_left
+                        ):
 
-                            data["last_reminder_day"] = days_left
+                            data["last_reminder_day"] = (
+                                days_left
+                            )
 
                             channel = bot.get_channel(
                                 data["channel_id"]
@@ -156,8 +170,10 @@ async def reminder_loop():
 
                             if channel:
 
-                                unready = get_unready_names(
-                                    channel.guild
+                                unready = (
+                                    get_unready_names(
+                                        channel.guild
+                                    )
                                 )
 
                                 msg = (
@@ -186,7 +202,10 @@ async def reminder_loop():
                             save()
 
         except Exception as e:
-            print("Reminder error:", e)
+            print(
+                "Reminder error:",
+                e
+            )
 
         await asyncio.sleep(60)
 
@@ -220,7 +239,9 @@ async def player_add(
             ephemeral=True
         )
 
-    data["players"].append(member.id)
+    data["players"].append(
+        member.id
+    )
 
     save()
 
@@ -248,10 +269,14 @@ async def player_remove(
             ephemeral=True
         )
 
-    data["players"].remove(member.id)
+    data["players"].remove(
+        member.id
+    )
 
     if member.id in data["ready"]:
-        data["ready"].remove(member.id)
+        data["ready"].remove(
+            member.id
+        )
 
     save()
 
@@ -289,9 +314,15 @@ async def player_list(
             f"{status} {member.display_name}"
         )
 
-    msg = "\n".join(lines) if lines else "No players."
+    msg = (
+        "\n".join(lines)
+        if lines
+        else "No players."
+    )
 
-    await interaction.response.send_message(msg)
+    await interaction.response.send_message(
+        msg
+    )
 
 
 tree.add_command(player_group)
@@ -302,45 +333,37 @@ tree.add_command(player_group)
 # ----------------------------
 
 advance_group = app_commands.Group(
-    name="advance",
-    description="Advance system"
+    name="advancegroup",
+    description="Advance utilities"
 )
 
 
 @advance_group.command(
-    name="start",
-    description="Start advance"
+    name="time",
+    description="Check time remaining"
 )
-@app_commands.checks.has_permissions(
-    administrator=True
-)
-async def advance_start(
-    interaction: discord.Interaction,
-    days: int = 4
+async def advance_time(
+    interaction: discord.Interaction
 ):
 
-    end = (
-        datetime.now(timezone.utc)
-        + timedelta(days=days)
+    remaining = get_remaining()
+
+    if not remaining:
+
+        return await interaction.response.send_message(
+            "No active advance."
+        )
+
+    d = remaining.days
+    h = (
+        remaining.seconds // 3600
     )
-
-    data["advance_end"] = end.isoformat()
-
-    data["channel_id"] = interaction.channel.id
-
-    data["ready"] = []
-
-    data["all_ready_sent"] = False
-
-    data["last_reminder_day"] = None
-
-    save()
+    m = (
+        remaining.seconds % 3600
+    ) // 60
 
     await interaction.response.send_message(
-        "@everyone 🏈 Timer for Advancement commenced!",
-        allowed_mentions=discord.AllowedMentions(
-            everyone=True
-        )
+        f"⏳ {d}d {h}h {m}m left"
     )
 
 
@@ -356,9 +379,7 @@ async def advance_cancel(
 ):
 
     data["advance_end"] = None
-
     data["ready"] = []
-
     data["all_ready_sent"] = False
 
     save()
@@ -369,33 +390,8 @@ async def advance_cancel(
 
 
 @advance_group.command(
-    name="time",
-    description="Time left"
-)
-async def advance_time(
-    interaction: discord.Interaction
-):
-
-    remaining = get_remaining()
-
-    if not remaining:
-
-        return await interaction.response.send_message(
-            "No active advance."
-        )
-
-    d = remaining.days
-    h = remaining.seconds // 3600
-    m = (remaining.seconds % 3600) // 60
-
-    await interaction.response.send_message(
-        f"⏳ {d}d {h}h {m}m left"
-    )
-
-
-@advance_group.command(
     name="force",
-    description="Force advance immediately"
+    description="Force advance"
 )
 @app_commands.checks.has_permissions(
     administrator=True
@@ -405,9 +401,7 @@ async def advance_force(
 ):
 
     data["advance_end"] = None
-
     data["ready"] = []
-
     data["all_ready_sent"] = False
 
     save()
@@ -419,7 +413,7 @@ async def advance_force(
 
 @advance_group.command(
     name="extend",
-    description="Extend current advance"
+    description="Extend timer"
 )
 @app_commands.checks.has_permissions(
     administrator=True
@@ -443,7 +437,9 @@ async def advance_extend(
         + timedelta(days=days)
     )
 
-    data["advance_end"] = new_end.isoformat()
+    data["advance_end"] = (
+        new_end.isoformat()
+    )
 
     save()
 
@@ -456,32 +452,85 @@ tree.add_command(advance_group)
 
 
 # ----------------------------
-# REGISTER
+# MAIN ADVANCE COMMAND
 # ----------------------------
 
 @tree.command(
-    name="register",
-    description="Register for the dynasty"
+    name="advance",
+    description="Start/reset advance timer"
 )
-async def register(
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def advance(
     interaction: discord.Interaction
 ):
 
-    uid = interaction.user.id
+    days = data.get(
+        "advance_days",
+        4
+    )
 
-    if uid in data["players"]:
+    new_end = (
+        datetime.now(timezone.utc)
+        + timedelta(days=days)
+    )
 
-        return await interaction.response.send_message(
-            "Already registered.",
-            ephemeral=True
-        )
+    # FULL RESET
+    data["advance_end"] = (
+        new_end.isoformat()
+    )
 
-    data["players"].append(uid)
+    data["channel_id"] = (
+        interaction.channel.id
+    )
+
+    data["ready"] = []
+
+    data["last_reminder_day"] = None
+
+    data["all_ready_sent"] = False
 
     save()
 
     await interaction.response.send_message(
-        "✅ Registered."
+        f"@everyone 🏈 Advance timer started! "
+        f"Advance is in {days} day(s).",
+        allowed_mentions=discord.AllowedMentions(
+            everyone=True
+        )
+    )
+
+
+# ----------------------------
+# SET DEFAULT DAYS
+# ----------------------------
+
+@tree.command(
+    name="setdays",
+    description="Set default advance days"
+)
+@app_commands.checks.has_permissions(
+    administrator=True
+)
+async def setdays(
+    interaction: discord.Interaction,
+    days: int
+):
+
+    if days <= 0:
+
+        return await interaction.response.send_message(
+            "Days must be greater than 0.",
+            ephemeral=True
+        )
+
+    data["advance_days"] = days
+
+    save()
+
+    await interaction.response.send_message(
+        f"✅ Default advance length set to {days} day(s)."
     )
 
 
@@ -521,7 +570,7 @@ async def ready(
         "✅ Ready!"
     )
 
-    # EVERYONE READY CHECK
+    # EVERYONE READY
     if (
         data["advance_end"]
         and everyone_ready()
@@ -596,29 +645,34 @@ async def status(
             continue
 
         if uid in data["ready"]:
+
             ready_players.append(
                 member.display_name
             )
+
         else:
+
             unready_players.append(
                 member.display_name
             )
 
     msg = (
-        f"✅ READY:\n"
+        "✅ READY:\n"
         + "\n".join(
             ready_players or ["Nobody"]
         )
     )
 
     msg += (
-        f"\n\n❌ NOT READY:\n"
+        "\n\n❌ NOT READY:\n"
         + "\n".join(
             unready_players or ["Nobody"]
         )
     )
 
-    await interaction.response.send_message(msg)
+    await interaction.response.send_message(
+        msg
+    )
 
 
 # ----------------------------
@@ -632,12 +686,19 @@ async def on_ready():
 
     await tree.sync()
 
-    print(f"Logged in as {bot.user}")
+    print(
+        f"Logged in as {bot.user}"
+    )
 
-    if not hasattr(bot, "reminder_task"):
+    if not hasattr(
+        bot,
+        "reminder_task"
+    ):
 
-        bot.reminder_task = asyncio.create_task(
-            reminder_loop()
+        bot.reminder_task = (
+            asyncio.create_task(
+                reminder_loop()
+            )
         )
 
 
