@@ -17,16 +17,9 @@ tree = bot.tree
 
 DATA_FILE = "dynasty.json"
 
+
 # ----------------------------
-# DATA STRUCTURE
-# ----------------------------
-# {
-#   "players": [user_id],
-#   "ready": [user_id],
-#   "advance_end": ISO string,
-#   "channel_id": int,
-#   "last_reminder_day": int
-# }
+# DATA
 # ----------------------------
 
 data = {
@@ -34,7 +27,8 @@ data = {
     "ready": [],
     "advance_end": None,
     "channel_id": None,
-    "last_reminder_day": None
+    "last_reminder_day": None,
+    "all_ready_sent": False
 }
 
 
@@ -53,6 +47,10 @@ def load():
     try:
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
+
+            if "all_ready_sent" not in data:
+                data["all_ready_sent"] = False
+
     except FileNotFoundError:
         save()
 
@@ -64,23 +62,28 @@ def load():
 def get_remaining():
     if not data["advance_end"]:
         return None
-
     end = datetime.fromisoformat(data["advance_end"])
     return end - datetime.now(timezone.utc)
 
 
-def get_unready_mentions():
-    mentions = []
+def everyone_ready():
+    if not data["players"]:
+        return False
+    return all(p in data["ready"] for p in data["players"])
 
-    for user_id in data["players"]:
-        if user_id not in data["ready"]:
-            mentions.append(f"<@{user_id}>")
 
-    return " ".join(mentions)
+def get_unready_names(guild):
+    names = []
+    for uid in data["players"]:
+        if uid not in data["ready"]:
+            m = guild.get_member(uid)
+            if m:
+                names.append(m.display_name)
+    return names
 
 
 # ----------------------------
-# REMINDER LOOP
+# REMINDER LOOP (FIXED - SINGLE INSTANCE)
 # ----------------------------
 
 async def reminder_loop():
@@ -97,7 +100,7 @@ async def reminder_loop():
 
                     seconds = remaining.total_seconds()
 
-                    # ADVANCE COMPLETE
+                    # COMPLETE
                     if seconds <= 0:
 
                         channel = bot.get_channel(data["channel_id"])
@@ -105,202 +108,262 @@ async def reminder_loop():
                         if channel:
                             await channel.send(
                                 "🚨 @everyone DYNASTY IS ADVANCING NOW!",
-                                allowed_mentions=discord.AllowedMentions(
-                                    everyone=True
-                                )
+                                allowed_mentions=discord.AllowedMentions(everyone=True)
                             )
 
                         data["advance_end"] = None
+                        data["ready"] = []
+                        data["all_ready_sent"] = False
                         save()
 
                     else:
 
                         days_left = remaining.days
 
-                        # prevent duplicate daily reminders
+                        # DAILY REMINDER ONLY
                         if data["last_reminder_day"] != days_left:
 
                             data["last_reminder_day"] = days_left
 
-                            unready_mentions = get_unready_mentions()
-
                             channel = bot.get_channel(data["channel_id"])
 
-                            if channel and unready_mentions:
+                            if channel:
 
-                                await channel.send(
-                                    f"⏳ {days_left} day(s) until advance.\n"
-                                    f"Still waiting on:\n"
-                                    f"{unready_mentions}"
-                                )
+                                unready = get_unready_names(channel.guild)
+
+                                msg = f"🏈 **{days_left} day(s) until advance**\n"
+
+                                if unready:
+                                    msg += "\n❌ Still waiting on:\n"
+                                    msg += "\n".join(f"- {n}" for n in unready)
+                                else:
+                                    msg += "\n✅ Everyone is ready."
+
+                                await channel.send(msg)
 
                             save()
 
         except Exception as e:
-            print("Reminder loop error:", e)
+            print("Reminder error:", e)
 
         await asyncio.sleep(60)
 
 
 # ----------------------------
-# REGISTER
+# PLAYER GROUP
 # ----------------------------
 
-@tree.command(name="register", description="Register for the dynasty")
-async def register(interaction: discord.Interaction):
+player_group = app_commands.Group(name="player", description="Player management")
 
-    user_id = interaction.user.id
 
-    if user_id in data["players"]:
-        await interaction.response.send_message(
-            "You are already registered.",
-            ephemeral=True
-        )
-        return
+@player_group.command(name="add", description="Add player")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_add(interaction: discord.Interaction, member: discord.Member):
 
-    data["players"].append(user_id)
+    if member.id in data["players"]:
+        return await interaction.response.send_message("Already added.", ephemeral=True)
+
+    data["players"].append(member.id)
     save()
 
-    await interaction.response.send_message(
-        "✅ You are now registered for the dynasty."
-    )
+    await interaction.response.send_message(f"✅ Added {member.display_name}")
 
 
-# ----------------------------
-# READY
-# ----------------------------
+@player_group.command(name="remove", description="Remove player")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_remove(interaction: discord.Interaction, member: discord.Member):
 
-@tree.command(name="ready", description="Mark yourself as ready")
-async def ready(interaction: discord.Interaction):
+    if member.id not in data["players"]:
+        return await interaction.response.send_message("Not found.", ephemeral=True)
 
-    user_id = interaction.user.id
+    data["players"].remove(member.id)
 
-    if user_id not in data["players"]:
-        await interaction.response.send_message(
-            "You are not registered.",
-            ephemeral=True
-        )
-        return
+    if member.id in data["ready"]:
+        data["ready"].remove(member.id)
 
-    if user_id in data["ready"]:
-        await interaction.response.send_message(
-            "You are already marked ready.",
-            ephemeral=True
-        )
-        return
-
-    data["ready"].append(user_id)
     save()
 
-    await interaction.response.send_message(
-        f"✅ {interaction.user.mention} is ready!"
-    )
+    await interaction.response.send_message(f"🛑 Removed {member.display_name}")
+
+
+@player_group.command(name="list", description="List players")
+async def player_list(interaction: discord.Interaction):
+
+    guild = interaction.guild
+
+    lines = []
+
+    for uid in data["players"]:
+        m = guild.get_member(uid)
+        if not m:
+            continue
+
+        status = "✅" if uid in data["ready"] else "❌"
+        lines.append(f"{status} {m.display_name}")
+
+    msg = "\n".join(lines) if lines else "No players."
+
+    await interaction.response.send_message(msg)
+
+
+tree.add_command(player_group)
 
 
 # ----------------------------
-# START ADVANCE
+# ADVANCE GROUP
 # ----------------------------
 
-@tree.command(name="advance_start", description="Start/reset advance timer")
+advance_group = app_commands.Group(name="advance", description="Advance system")
+
+
+@advance_group.command(name="start", description="Start advance")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance_start(interaction: discord.Interaction, days: int = 4):
 
-    end_time = datetime.now(timezone.utc) + timedelta(days=days)
+    end = datetime.now(timezone.utc) + timedelta(days=days)
 
-    data["advance_end"] = end_time.isoformat()
+    data["advance_end"] = end.isoformat()
     data["channel_id"] = interaction.channel.id
-
-    # RESET READY STATUS
     data["ready"] = []
-
-    # reset reminder tracking
+    data["all_ready_sent"] = False
     data["last_reminder_day"] = None
 
     save()
 
     await interaction.response.send_message(
-        f"@everyone 🏈 Dynasty advance started! "
-        f"Advance is in {days} days.",
+        "@everyone 🏈 Advance started!",
         allowed_mentions=discord.AllowedMentions(everyone=True)
     )
 
 
-# ----------------------------
-# CANCEL ADVANCE
-# ----------------------------
-
-@tree.command(name="advance_cancel", description="Cancel advance timer")
+@advance_group.command(name="cancel", description="Cancel advance")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance_cancel(interaction: discord.Interaction):
 
-    if not data["advance_end"]:
-        await interaction.response.send_message(
-            "No active advance.",
-            ephemeral=True
-        )
-        return
-
     data["advance_end"] = None
+    data["ready"] = []
+    data["all_ready_sent"] = False
     save()
 
-    await interaction.response.send_message(
-        "🛑 Advance timer cancelled."
-    )
+    await interaction.response.send_message("🛑 Advance cancelled")
 
 
-# ----------------------------
-# TIME LEFT
-# ----------------------------
-
-@tree.command(name="advance_time", description="Check time until advance")
+@advance_group.command(name="time", description="Time left")
 async def advance_time(interaction: discord.Interaction):
 
     remaining = get_remaining()
 
     if not remaining:
-        await interaction.response.send_message(
-            "No active advance."
-        )
-        return
-
-    if remaining.total_seconds() <= 0:
-        await interaction.response.send_message(
-            "🚨 Dynasty is ready to advance!"
-        )
-        return
+        return await interaction.response.send_message("No active advance.")
 
     d = remaining.days
     h = remaining.seconds // 3600
     m = (remaining.seconds % 3600) // 60
 
-    await interaction.response.send_message(
-        f"⏳ Time left: {d}d {h}h {m}m"
-    )
+    await interaction.response.send_message(f"⏳ {d}d {h}h {m}m left")
+
+
+@advance_group.command(name="force", description="Force advance immediately")
+@app_commands.checks.has_permissions(administrator=True)
+async def advance_force(interaction: discord.Interaction):
+
+    data["advance_end"] = None
+    data["ready"] = []
+    data["all_ready_sent"] = False
+
+    save()
+
+    await interaction.response.send_message("🚨 Forced advance executed.")
+
+
+@advance_group.command(name="extend", description="Extend current advance")
+@app_commands.checks.has_permissions(administrator=True)
+async def advance_extend(interaction: discord.Interaction, days: int):
+
+    remaining = get_remaining()
+
+    if not remaining:
+        return await interaction.response.send_message("No active advance.")
+
+    new_end = datetime.now(timezone.utc) + remaining + timedelta(days=days)
+
+    data["advance_end"] = new_end.isoformat()
+    save()
+
+    await interaction.response.send_message(f"⏳ Extended by {days} day(s).")
+
+
+tree.add_command(advance_group)
 
 
 # ----------------------------
-# LIST STATUS
+# READY SYSTEM
 # ----------------------------
 
-@tree.command(name="status", description="Show dynasty readiness")
+@tree.command(name="ready", description="Mark ready")
+async def ready(interaction: discord.Interaction):
+
+    uid = interaction.user.id
+
+    if uid not in data["players"]:
+        return await interaction.response.send_message("Not registered.", ephemeral=True)
+
+    if uid in data["ready"]:
+        return await interaction.response.send_message("Already ready.", ephemeral=True)
+
+    data["ready"].append(uid)
+    save()
+
+    await interaction.response.send_message("✅ Ready!")
+
+    # all ready check
+    if data["advance_end"] and everyone_ready() and not data["all_ready_sent"]:
+
+        data["all_ready_sent"] = True
+        save()
+
+        channel = bot.get_channel(data["channel_id"])
+        if channel:
+            await channel.send("🏈 Everyone is ready! Advance whenever ready.")
+
+
+@tree.command(name="unready", description="Mark unready")
+async def unready(interaction: discord.Interaction):
+
+    uid = interaction.user.id
+
+    if uid in data["ready"]:
+        data["ready"].remove(uid)
+        data["all_ready_sent"] = False
+        save()
+
+    await interaction.response.send_message("↩️ Unready")
+
+
+# ----------------------------
+# STATUS
+# ----------------------------
+
+@tree.command(name="status", description="Show status")
 async def status(interaction: discord.Interaction):
 
-    ready_mentions = []
-    unready_mentions = []
+    guild = interaction.guild
 
-    for user_id in data["players"]:
+    ready = []
+    unready = []
 
-        if user_id in data["ready"]:
-            ready_mentions.append(f"<@{user_id}>")
+    for uid in data["players"]:
+        m = guild.get_member(uid)
+        if not m:
+            continue
+
+        if uid in data["ready"]:
+            ready.append(m.display_name)
         else:
-            unready_mentions.append(f"<@{user_id}>")
+            unready.append(m.display_name)
 
-    msg = (
-        f"✅ READY ({len(ready_mentions)}):\n"
-        f"{' '.join(ready_mentions) if ready_mentions else 'Nobody'}\n\n"
-        f"❌ NOT READY ({len(unready_mentions)}):\n"
-        f"{' '.join(unready_mentions) if unready_mentions else 'Nobody'}"
-    )
+    msg = f"✅ READY:\n" + "\n".join(ready or ["Nobody"])
+    msg += f"\n\n❌ NOT READY:\n" + "\n".join(unready or ["Nobody"])
 
     await interaction.response.send_message(msg)
 
@@ -312,12 +375,11 @@ async def status(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     load()
-
     await tree.sync()
-
     print(f"Logged in as {bot.user}")
 
-    bot.loop.create_task(reminder_loop())
+    if not hasattr(bot, "reminder_task"):
+        bot.reminder_task = asyncio.create_task(reminder_loop())
 
 
 bot.run(TOKEN)
