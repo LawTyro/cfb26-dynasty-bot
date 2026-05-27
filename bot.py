@@ -309,19 +309,33 @@ async def ready(interaction: discord.Interaction):
 
     await interaction.response.send_message("✅ Ready!")
 
-    if (
-        data["advance_end"]
-        and everyone_ready()
-        and not data["all_ready_sent"]
-    ):
-        data["all_ready_sent"] = True
-        save()
+  if (
+    data["advance_end"]
+    and everyone_ready()
+    and not data["all_ready_sent"]
+):
+    data["all_ready_sent"] = True
+    save()
 
-        channel = bot.get_channel(data["channel_id"])
+    channel = bot.get_channel(data["channel_id"])
 
-        if channel:
-            await channel.send(
-                "🏈 Everyone is ready! Advance whenever you'd like."
+    if channel:
+
+        commissioner_role = discord.utils.get(
+            channel.guild.roles,
+            name="Commissioners"
+        )
+
+        commissioner_ping = (
+            commissioner_role.mention
+            if commissioner_role
+            else "@Commissioners"
+        )
+
+        await channel.send(
+            f"🏈 Everyone is ready! "
+            f"{commissioner_ping} advance the league!"
+        )
             )
 
 
