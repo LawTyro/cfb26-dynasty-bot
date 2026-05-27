@@ -21,7 +21,7 @@ DATA_FILE = "dynasty.json"
 data = {
     "players": [],
     "ready": [],
-    "teams": {},
+    "team_history": {},
     "advance_end": None,
     "channel_id": None,
     "last_reminder_day": None,
@@ -43,8 +43,17 @@ def load():
             loaded = json.load(f)
             data.update(loaded)
 
-        if "teams" not in data:
-            data["teams"] = {}
+        if "team_history" not in data:
+            data["team_history"] = {}
+
+        if "teams" in data:
+            for uid, team in data["teams"].items():
+                if team:
+                    data["team_history"].setdefault(uid, [])
+                    if team not in data["team_history"][uid]:
+                        data["team_history"][uid].append(team)
+            del data["teams"]
+            save()
 
     except FileNotFoundError:
         save()
@@ -65,18 +74,16 @@ def everyone_ready():
     )
 
 
-def get_team(uid):
-    return data.get("teams", {}).get(str(uid), "No team")
-
-
 def get_unready_mentions():
-    mentions = []
+    return [
+        f"<@{uid}>"
+        for uid in data["players"]
+        if uid not in data["ready"]
+    ]
 
-    for uid in data["players"]:
-        if uid not in data["ready"]:
-            mentions.append(f"<@{uid}>")
 
-    return mentions
+def get_history(uid):
+    return data["team_history"].get(str(uid), [])
 
 
 async def reminder_loop():
@@ -96,9 +103,7 @@ async def reminder_loop():
                         if channel:
                             await channel.send(
                                 "🚨 @everyone DYNASTY IS ADVANCING NOW!",
-                                allowed_mentions=discord.AllowedMentions(
-                                    everyone=True
-                                )
+                                allowed_mentions=discord.AllowedMentions(everyone=True)
                             )
 
                         data["advance_end"] = None
@@ -121,18 +126,13 @@ async def reminder_loop():
 
                                 if unready:
                                     msg += "\n❌ Still waiting on:\n"
-                                    msg += "\n".join(
-                                        f"- {mention}"
-                                        for mention in unready
-                                    )
+                                    msg += "\n".join(f"- {mention}" for mention in unready)
                                 else:
                                     msg += "\n✅ Everyone is ready."
 
                                 await channel.send(
                                     msg,
-                                    allowed_mentions=discord.AllowedMentions(
-                                        users=True
-                                    )
+                                    allowed_mentions=discord.AllowedMentions(users=True)
                                 )
 
                             save()
@@ -148,51 +148,39 @@ player_group = app_commands.Group(
     description="Player management"
 )
 
+team_group = app_commands.Group(
+    name="team",
+    description="Team history commands"
+)
+
 
 @player_group.command(name="add", description="Add player")
 @app_commands.checks.has_permissions(administrator=True)
-async def player_add(
-    interaction: discord.Interaction,
-    member: discord.Member
-):
+async def player_add(interaction: discord.Interaction, member: discord.Member):
     if member.id in data["players"]:
-        return await interaction.response.send_message(
-            "Already added.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Already added.", ephemeral=True)
 
     data["players"].append(member.id)
+    data["team_history"].setdefault(str(member.id), [])
     save()
 
-    await interaction.response.send_message(
-        f"✅ Added {member.display_name}"
-    )
+    await interaction.response.send_message(f"✅ Added {member.display_name}")
 
 
 @player_group.command(name="remove", description="Remove player")
 @app_commands.checks.has_permissions(administrator=True)
-async def player_remove(
-    interaction: discord.Interaction,
-    member: discord.Member
-):
+async def player_remove(interaction: discord.Interaction, member: discord.Member):
     if member.id not in data["players"]:
-        return await interaction.response.send_message(
-            "Not found.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Not found.", ephemeral=True)
 
     data["players"].remove(member.id)
 
     if member.id in data["ready"]:
         data["ready"].remove(member.id)
 
-    data["teams"].pop(str(member.id), None)
-
     save()
 
-    await interaction.response.send_message(
-        f"🛑 Removed {member.display_name}"
-    )
+    await interaction.response.send_message(f"🛑 Removed {member.display_name}")
 
 
 @player_group.command(name="list", description="List players")
@@ -207,63 +195,124 @@ async def player_list(interaction: discord.Interaction):
             continue
 
         status = "✅" if uid in data["ready"] else "❌"
-        team = get_team(uid)
-        lines.append(f"{status} {member.display_name} — {team}")
+        lines.append(f"{status} {member.display_name}")
 
-    msg = "\n".join(lines) if lines else "No players."
+    await interaction.response.send_message("\n".join(lines) if lines else "No players.")
+
+
+@team_group.command(name="add", description="Add a team to your history")
+async def team_add(interaction: discord.Interaction, team: str):
+    uid = interaction.user.id
+
+    if uid not in data["players"]:
+        return await interaction.response.send_message("Not registered.", ephemeral=True)
+
+    history = data["team_history"].setdefault(str(uid), [])
+
+    if team in history:
+        return await interaction.response.send_message(
+            f"**{team}** is already in your team history.",
+            ephemeral=True
+        )
+
+    history.append(team)
+    save()
+
+    await interaction.response.send_message(f"🏈 Added **{team}** to your team history.")
+
+
+@team_group.command(name="remove", description="Remove a team from your history")
+async def team_remove(interaction: discord.Interaction, team: str):
+    uid = interaction.user.id
+    history = data["team_history"].setdefault(str(uid), [])
+
+    match = next((t for t in history if t.lower() == team.lower()), None)
+
+    if not match:
+        return await interaction.response.send_message(
+            f"**{team}** was not found in your team history.",
+            ephemeral=True
+        )
+
+    history.remove(match)
+    save()
+
+    await interaction.response.send_message(f"🧹 Removed **{match}** from your team history.")
+
+
+@team_group.command(name="reset", description="Reset team history for a player or everyone")
+@app_commands.checks.has_permissions(administrator=True)
+async def team_reset(
+    interaction: discord.Interaction,
+    member: discord.Member = None,
+    all_players: bool = False
+):
+    if all_players:
+        data["team_history"] = {str(uid): [] for uid in data["players"]}
+        save()
+        return await interaction.response.send_message("🧹 Reset team history for all players.")
+
+    target = member or interaction.user
+
+    data["team_history"][str(target.id)] = []
+    save()
+
+    await interaction.response.send_message(f"🧹 Reset team history for {target.display_name}.")
+
+
+player_group.add_command(team_group)
+tree.add_command(player_group)
+
+
+@tree.command(name="history", description="Show team history")
+async def history(interaction: discord.Interaction, member: discord.Member = None):
+    target = member or interaction.user
+    teams = get_history(target.id)
+
+    if not teams:
+        return await interaction.response.send_message(
+            f"🏈 {target.display_name} has no team history yet."
+        )
+
+    msg = f"🏈 **{target.display_name}'s Team History**\n"
+    msg += "\n".join(f"- {team}" for team in teams)
 
     await interaction.response.send_message(msg)
 
 
-@player_group.command(name="team", description="Set a player's team")
-@app_commands.checks.has_permissions(administrator=True)
-async def player_team(
-    interaction: discord.Interaction,
-    member: discord.Member,
-    team: str
-):
-    if member.id not in data["players"]:
-        return await interaction.response.send_message(
-            "That user is not registered.",
-            ephemeral=True
-        )
+@tree.command(name="historyall", description="Show team history for all players")
+async def historyall(interaction: discord.Interaction):
+    guild = interaction.guild
+    sections = []
 
-    data["teams"][str(member.id)] = team
-    save()
+    for uid in data["players"]:
+        member = guild.get_member(uid)
 
-    await interaction.response.send_message(
-        f"🏈 Set {member.display_name}'s team to **{team}**."
-    )
+        if not member:
+            continue
 
+        teams = get_history(uid)
 
-@player_group.command(name="clearteam", description="Clear a player's team")
-@app_commands.checks.has_permissions(administrator=True)
-async def player_clearteam(
-    interaction: discord.Interaction,
-    member: discord.Member
-):
-    if member.id not in data["players"]:
-        return await interaction.response.send_message(
-            "That user is not registered.",
-            ephemeral=True
-        )
+        if teams:
+            section = f"**{member.display_name}**\n"
+            section += "\n".join(f"- {team}" for team in teams)
+        else:
+            section = f"**{member.display_name}**\n- No team history"
 
-    data["teams"].pop(str(member.id), None)
-    save()
+        sections.append(section)
 
-    await interaction.response.send_message(
-        f"🧹 Cleared team for {member.display_name}."
-    )
+    if not sections:
+        return await interaction.response.send_message("No players found.")
 
+    msg = "🏈 **TEAM HISTORIES**\n\n" + "\n\n".join(sections)
 
-tree.add_command(player_group)
+    await interaction.response.send_message(msg)
 
 
 @tree.command(name="advance", description="Start/reset advance timer")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance(interaction: discord.Interaction):
     days = data.get("advance_days", 4)
-
     new_end = datetime.now(timezone.utc) + timedelta(days=days)
 
     data["advance_end"] = new_end.isoformat()
@@ -275,8 +324,7 @@ async def advance(interaction: discord.Interaction):
     save()
 
     await interaction.response.send_message(
-        f"@everyone 🏈 Advance timer started! "
-        f"Advance is in {days} day(s).",
+        f"@everyone 🏈 Advance timer started! Advance is in {days} day(s).",
         allowed_mentions=discord.AllowedMentions(everyone=True)
     )
 
@@ -290,40 +338,28 @@ async def cancel(interaction: discord.Interaction):
 
     save()
 
-    await interaction.response.send_message(
-        "🛑 Advance cancelled"
-    )
+    await interaction.response.send_message("🛑 Advance cancelled")
 
 
 @tree.command(name="extend", description="Extend timer")
 @app_commands.checks.has_permissions(administrator=True)
-async def extend(
-    interaction: discord.Interaction,
-    days: int
-):
+async def extend(interaction: discord.Interaction, days: int):
     remaining = get_remaining()
 
     if not remaining:
-        return await interaction.response.send_message(
-            "No active advance."
-        )
+        return await interaction.response.send_message("No active advance.")
 
     new_end = datetime.now(timezone.utc) + remaining + timedelta(days=days)
 
     data["advance_end"] = new_end.isoformat()
     save()
 
-    await interaction.response.send_message(
-        f"⏳ Extended by {days} day(s)."
-    )
+    await interaction.response.send_message(f"⏳ Extended by {days} day(s).")
 
 
 @tree.command(name="setdays", description="Set default advance days")
 @app_commands.checks.has_permissions(administrator=True)
-async def setdays(
-    interaction: discord.Interaction,
-    days: int
-):
+async def setdays(interaction: discord.Interaction, days: int):
     if days <= 0:
         return await interaction.response.send_message(
             "Days must be greater than 0.",
@@ -343,27 +379,17 @@ async def ready(interaction: discord.Interaction):
     uid = interaction.user.id
 
     if uid not in data["players"]:
-        return await interaction.response.send_message(
-            "Not registered.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Not registered.", ephemeral=True)
 
     if uid in data["ready"]:
-        return await interaction.response.send_message(
-            "Already ready.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Already ready.", ephemeral=True)
 
     data["ready"].append(uid)
     save()
 
     await interaction.response.send_message("✅ Ready!")
 
-    if (
-        data["advance_end"]
-        and everyone_ready()
-        and not data["all_ready_sent"]
-    ):
+    if data["advance_end"] and everyone_ready() and not data["all_ready_sent"]:
         data["all_ready_sent"] = True
         save()
 
@@ -382,8 +408,8 @@ async def ready(interaction: discord.Interaction):
             )
 
             await channel.send(
-                f"🏈 Everyone is ready! "
-                f"{commissioner_ping} advance the league!"
+                f"🏈 Everyone is ready! {commissioner_ping} advance the league!",
+                allowed_mentions=discord.AllowedMentions(roles=True)
             )
 
 
@@ -412,13 +438,10 @@ async def status(interaction: discord.Interaction):
         if not member:
             continue
 
-        team = get_team(uid)
-        player_line = f"{member.display_name} — {team}"
-
         if uid in data["ready"]:
-            ready_players.append(player_line)
+            ready_players.append(member.display_name)
         else:
-            unready_players.append(player_line)
+            unready_players.append(member.display_name)
 
     remaining = get_remaining()
 
@@ -433,10 +456,7 @@ async def status(interaction: discord.Interaction):
             f"📅 Default Length: {data.get('advance_days', 4)} day(s)\n\n"
         )
     elif remaining and remaining.total_seconds() <= 0:
-        msg = (
-            "🏈 ADVANCE STATUS\n"
-            "🚨 Dynasty is ready to advance!\n\n"
-        )
+        msg = "🏈 ADVANCE STATUS\n🚨 Dynasty is ready to advance!\n\n"
     else:
         msg = (
             "🏈 ADVANCE STATUS\n"
@@ -444,15 +464,8 @@ async def status(interaction: discord.Interaction):
             f"📅 Default Length: {data.get('advance_days', 4)} day(s)\n\n"
         )
 
-    msg += (
-        "✅ READY:\n"
-        + "\n".join(ready_players or ["Nobody"])
-    )
-
-    msg += (
-        "\n\n❌ NOT READY:\n"
-        + "\n".join(unready_players or ["Nobody"])
-    )
+    msg += "✅ READY:\n" + "\n".join(ready_players or ["Nobody"])
+    msg += "\n\n❌ NOT READY:\n" + "\n".join(unready_players or ["Nobody"])
 
     await interaction.response.send_message(msg)
 
