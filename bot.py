@@ -1,3 +1,4 @@
+```python
 import os
 import json
 import math
@@ -108,7 +109,9 @@ async def reminder_loop():
                             if channel:
                                 unready = get_unready_mentions()
 
-                                msg = f"🏈 **{days_left} day(s) until advance**\n"
+                                msg = (
+                                    f"🏈 **{days_left} day(s) until advance**\n"
+                                )
 
                                 if unready:
                                     msg += "\n❌ Still waiting on:\n"
@@ -206,66 +209,6 @@ async def player_list(interaction: discord.Interaction):
 tree.add_command(player_group)
 
 
-advance_group = app_commands.Group(
-    name="advancegroup",
-    description="Advance utilities"
-)
-
-
-@advance_group.command(name="cancel", description="Cancel advance")
-@app_commands.checks.has_permissions(administrator=True)
-async def advance_cancel(interaction: discord.Interaction):
-    data["advance_end"] = None
-    data["ready"] = []
-    data["all_ready_sent"] = False
-
-    save()
-
-    await interaction.response.send_message(
-        "🛑 Advance cancelled"
-    )
-
-
-@advance_group.command(name="force", description="Force advance")
-@app_commands.checks.has_permissions(administrator=True)
-async def advance_force(interaction: discord.Interaction):
-    data["advance_end"] = None
-    data["ready"] = []
-    data["all_ready_sent"] = False
-
-    save()
-
-    await interaction.response.send_message(
-        "🚨 Forced advance executed."
-    )
-
-
-@advance_group.command(name="extend", description="Extend timer")
-@app_commands.checks.has_permissions(administrator=True)
-async def advance_extend(
-    interaction: discord.Interaction,
-    days: int
-):
-    remaining = get_remaining()
-
-    if not remaining:
-        return await interaction.response.send_message(
-            "No active advance."
-        )
-
-    new_end = datetime.now(timezone.utc) + remaining + timedelta(days=days)
-
-    data["advance_end"] = new_end.isoformat()
-    save()
-
-    await interaction.response.send_message(
-        f"⏳ Extended by {days} day(s)."
-    )
-
-
-tree.add_command(advance_group)
-
-
 @tree.command(name="advance", description="Start/reset advance timer")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance(interaction: discord.Interaction):
@@ -285,6 +228,43 @@ async def advance(interaction: discord.Interaction):
         f"@everyone 🏈 Advance timer started! "
         f"Advance is in {days} day(s).",
         allowed_mentions=discord.AllowedMentions(everyone=True)
+    )
+
+
+@tree.command(name="cancel", description="Cancel advance")
+@app_commands.checks.has_permissions(administrator=True)
+async def cancel(interaction: discord.Interaction):
+    data["advance_end"] = None
+    data["ready"] = []
+    data["all_ready_sent"] = False
+
+    save()
+
+    await interaction.response.send_message(
+        "🛑 Advance cancelled"
+    )
+
+
+@tree.command(name="extend", description="Extend timer")
+@app_commands.checks.has_permissions(administrator=True)
+async def extend(
+    interaction: discord.Interaction,
+    days: int
+):
+    remaining = get_remaining()
+
+    if not remaining:
+        return await interaction.response.send_message(
+            "No active advance."
+        )
+
+    new_end = datetime.now(timezone.utc) + remaining + timedelta(days=days)
+
+    data["advance_end"] = new_end.isoformat()
+    save()
+
+    await interaction.response.send_message(
+        f"⏳ Extended by {days} day(s)."
     )
 
 
@@ -424,3 +404,4 @@ async def on_ready():
 
 
 bot.run(TOKEN)
+```
