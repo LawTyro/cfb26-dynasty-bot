@@ -108,9 +108,7 @@ async def reminder_loop():
                             if channel:
                                 unready = get_unready_mentions()
 
-                                msg = (
-                                    f"🏈 **{days_left} day(s) until advance**\n"
-                                )
+                                msg = f"🏈 **{days_left} day(s) until advance**\n"
 
                                 if unready:
                                     msg += "\n❌ Still waiting on:\n"
@@ -359,77 +357,56 @@ async def unready(interaction: discord.Interaction):
     await interaction.response.send_message("↩️ Unready")
 
 
-@tree.command(
-    name="status",
-    description="Show dynasty status"
-)
-async def status(
-    interaction: discord.Interaction
-):
-
+@tree.command(name="status", description="Show dynasty status")
+async def status(interaction: discord.Interaction):
     guild = interaction.guild
 
     ready_players = []
     unready_players = []
 
     for uid in data["players"]:
-
         member = guild.get_member(uid)
 
         if not member:
             continue
 
         if uid in data["ready"]:
-            ready_players.append(
-                member.display_name
-            )
+            ready_players.append(member.display_name)
         else:
-            unready_players.append(
-                member.display_name
-            )
+            unready_players.append(member.display_name)
 
-    msg = ""
-
-    # TIMER INFO
     remaining = get_remaining()
 
-    if remaining:
-
+    if remaining and remaining.total_seconds() > 0:
         d = remaining.days
         h = remaining.seconds // 3600
         m = (remaining.seconds % 3600) // 60
 
-        msg += (
-            f"🏈 ADVANCE STATUS\n"
-            f"⏳ Time Left: {d}d {h}h {m}m\n"
-            f"📅 Default Length: {data['advance_days']} day(s)\n\n"
-        )
-
-    else:
-
-        msg += (
+        msg = (
             "🏈 ADVANCE STATUS\n"
-            "❌ No active advance.\n\n"
+            f"⏳ Time Left: {d}d {h}h {m}m\n"
+            f"📅 Default Length: {data.get('advance_days', 4)} day(s)\n\n"
+        )
+    elif remaining and remaining.total_seconds() <= 0:
+        msg = (
+            "🏈 ADVANCE STATUS\n"
+            "🚨 Dynasty is ready to advance!\n\n"
+        )
+    else:
+        msg = (
+            "🏈 ADVANCE STATUS\n"
+            "❌ No active advance.\n"
+            f"📅 Default Length: {data.get('advance_days', 4)} day(s)\n\n"
         )
 
-    # READY PLAYERS
     msg += (
         "✅ READY:\n"
-        + "\n".join(
-            ready_players or ["Nobody"]
-        )
+        + "\n".join(ready_players or ["Nobody"])
     )
 
-    # UNREADY PLAYERS
     msg += (
         "\n\n❌ NOT READY:\n"
-        + "\n".join(
-            unready_players or ["Nobody"]
-        )
-    )
-
-    await interaction.response.send_message(
-        msg
+        + "\n".join(unready_players or ["Nobody"])
     )
 
     await interaction.response.send_message(msg)
