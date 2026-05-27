@@ -214,24 +214,6 @@ advance_group = app_commands.Group(
 )
 
 
-@advance_group.command(name="time", description="Check time remaining")
-async def advance_time(interaction: discord.Interaction):
-    remaining = get_remaining()
-
-    if not remaining:
-        return await interaction.response.send_message(
-            "No active advance."
-        )
-
-    d = remaining.days
-    h = remaining.seconds // 3600
-    m = (remaining.seconds % 3600) // 60
-
-    await interaction.response.send_message(
-        f"⏳ {d}d {h}h {m}m left"
-    )
-
-
 @advance_group.command(name="cancel", description="Cancel advance")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance_cancel(interaction: discord.Interaction):
@@ -377,32 +359,77 @@ async def unready(interaction: discord.Interaction):
     await interaction.response.send_message("↩️ Unready")
 
 
-@tree.command(name="status", description="Show status")
-async def status(interaction: discord.Interaction):
+@tree.command(
+    name="status",
+    description="Show dynasty status"
+)
+async def status(
+    interaction: discord.Interaction
+):
+
     guild = interaction.guild
 
     ready_players = []
     unready_players = []
 
     for uid in data["players"]:
+
         member = guild.get_member(uid)
 
         if not member:
             continue
 
         if uid in data["ready"]:
-            ready_players.append(member.display_name)
+            ready_players.append(
+                member.display_name
+            )
         else:
-            unready_players.append(member.display_name)
+            unready_players.append(
+                member.display_name
+            )
 
-    msg = (
+    msg = ""
+
+    # TIMER INFO
+    remaining = get_remaining()
+
+    if remaining:
+
+        d = remaining.days
+        h = remaining.seconds // 3600
+        m = (remaining.seconds % 3600) // 60
+
+        msg += (
+            f"🏈 ADVANCE STATUS\n"
+            f"⏳ Time Left: {d}d {h}h {m}m\n"
+            f"📅 Default Length: {data['advance_days']} day(s)\n\n"
+        )
+
+    else:
+
+        msg += (
+            "🏈 ADVANCE STATUS\n"
+            "❌ No active advance.\n\n"
+        )
+
+    # READY PLAYERS
+    msg += (
         "✅ READY:\n"
-        + "\n".join(ready_players or ["Nobody"])
+        + "\n".join(
+            ready_players or ["Nobody"]
+        )
     )
 
+    # UNREADY PLAYERS
     msg += (
         "\n\n❌ NOT READY:\n"
-        + "\n".join(unready_players or ["Nobody"])
+        + "\n".join(
+            unready_players or ["Nobody"]
+        )
+    )
+
+    await interaction.response.send_message(
+        msg
     )
 
     await interaction.response.send_message(msg)
