@@ -21,6 +21,7 @@ DATA_FILE = "dynasty.json"
 data = {
     "players": [],
     "ready": [],
+    "teams": {},
     "advance_end": None,
     "channel_id": None,
     "last_reminder_day": None,
@@ -41,6 +42,10 @@ def load():
         with open(DATA_FILE, "r") as f:
             loaded = json.load(f)
             data.update(loaded)
+
+        if "teams" not in data:
+            data["teams"] = {}
+
     except FileNotFoundError:
         save()
 
@@ -58,6 +63,10 @@ def everyone_ready():
         player in data["ready"]
         for player in data["players"]
     )
+
+
+def get_team(uid):
+    return data.get("teams", {}).get(str(uid), "No team")
 
 
 def get_unready_mentions():
@@ -108,9 +117,7 @@ async def reminder_loop():
                             if channel:
                                 unready = get_unready_mentions()
 
-                                msg = (
-                                    f"🏈 **{days_left} day(s) until advance**\n"
-                                )
+                                msg = f"🏈 **{days_left} day(s) until advance**\n"
 
                                 if unready:
                                     msg += "\n❌ Still waiting on:\n"
@@ -179,6 +186,8 @@ async def player_remove(
     if member.id in data["ready"]:
         data["ready"].remove(member.id)
 
+    data["teams"].pop(str(member.id), None)
+
     save()
 
     await interaction.response.send_message(
@@ -198,11 +207,53 @@ async def player_list(interaction: discord.Interaction):
             continue
 
         status = "✅" if uid in data["ready"] else "❌"
-        lines.append(f"{status} {member.display_name}")
+        team = get_team(uid)
+        lines.append(f"{status} {member.display_name} — {team}")
 
     msg = "\n".join(lines) if lines else "No players."
 
     await interaction.response.send_message(msg)
+
+
+@player_group.command(name="team", description="Set a player's team")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_team(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    team: str
+):
+    if member.id not in data["players"]:
+        return await interaction.response.send_message(
+            "That user is not registered.",
+            ephemeral=True
+        )
+
+    data["teams"][str(member.id)] = team
+    save()
+
+    await interaction.response.send_message(
+        f"🏈 Set {member.display_name}'s team to **{team}**."
+    )
+
+
+@player_group.command(name="clearteam", description="Clear a player's team")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_clearteam(
+    interaction: discord.Interaction,
+    member: discord.Member
+):
+    if member.id not in data["players"]:
+        return await interaction.response.send_message(
+            "That user is not registered.",
+            ephemeral=True
+        )
+
+    data["teams"].pop(str(member.id), None)
+    save()
+
+    await interaction.response.send_message(
+        f"🧹 Cleared team for {member.display_name}."
+    )
 
 
 tree.add_command(player_group)
@@ -319,7 +370,6 @@ async def ready(interaction: discord.Interaction):
         channel = bot.get_channel(data["channel_id"])
 
         if channel:
-
             commissioner_role = discord.utils.get(
                 channel.guild.roles,
                 name="Commissioners"
@@ -362,10 +412,13 @@ async def status(interaction: discord.Interaction):
         if not member:
             continue
 
+        team = get_team(uid)
+        player_line = f"{member.display_name} — {team}"
+
         if uid in data["ready"]:
-            ready_players.append(member.display_name)
+            ready_players.append(player_line)
         else:
-            unready_players.append(member.display_name)
+            unready_players.append(player_line)
 
     remaining = get_remaining()
 
