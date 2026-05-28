@@ -21,10 +21,6 @@ DB_FILE = "dynasty.db"
 OLD_JSON_FILE = "dynasty.json"
 
 
-# ----------------------------
-# DATABASE
-# ----------------------------
-
 def db_connect():
     return sqlite3.connect(DB_FILE)
 
@@ -123,10 +119,7 @@ def get_players():
 def add_player_db(user_id):
     with db_connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO players (user_id) VALUES (?)",
-            (user_id,)
-        )
+        cur.execute("INSERT OR IGNORE INTO players (user_id) VALUES (?)", (user_id,))
         conn.commit()
 
 
@@ -155,10 +148,7 @@ def get_ready_players():
 def mark_ready_db(user_id):
     with db_connect() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT OR IGNORE INTO ready (user_id) VALUES (?)",
-            (user_id,)
-        )
+        cur.execute("INSERT OR IGNORE INTO ready (user_id) VALUES (?)", (user_id,))
         conn.commit()
 
 
@@ -210,7 +200,6 @@ def remove_history_db(user_id, team):
             return None
 
         history_id, actual_team = row
-
         cur.execute("DELETE FROM team_history WHERE id = ?", (history_id,))
         conn.commit()
 
@@ -269,11 +258,31 @@ def remove_latest_h2h_game(winner_id, loser_id):
             return None
 
         game_id, played_at = row
-
         cur.execute("DELETE FROM h2h_games WHERE id = ?", (game_id,))
         conn.commit()
 
         return played_at
+
+
+def reset_h2h(player1_id=None, player2_id=None):
+    with db_connect() as conn:
+        cur = conn.cursor()
+
+        if player1_id is None and player2_id is None:
+            cur.execute("DELETE FROM h2h_games")
+        else:
+            cur.execute(
+                """
+                DELETE FROM h2h_games
+                WHERE
+                (winner_id = ? AND loser_id = ?)
+                OR
+                (winner_id = ? AND loser_id = ?)
+                """,
+                (player1_id, player2_id, player2_id, player1_id)
+            )
+
+        conn.commit()
 
 
 def get_h2h_record(player1_id, player2_id):
@@ -281,21 +290,13 @@ def get_h2h_record(player1_id, player2_id):
         cur = conn.cursor()
 
         cur.execute(
-            """
-            SELECT COUNT(*)
-            FROM h2h_games
-            WHERE winner_id = ? AND loser_id = ?
-            """,
+            "SELECT COUNT(*) FROM h2h_games WHERE winner_id = ? AND loser_id = ?",
             (player1_id, player2_id)
         )
         p1_wins = cur.fetchone()[0]
 
         cur.execute(
-            """
-            SELECT COUNT(*)
-            FROM h2h_games
-            WHERE winner_id = ? AND loser_id = ?
-            """,
+            "SELECT COUNT(*) FROM h2h_games WHERE winner_id = ? AND loser_id = ?",
             (player2_id, player1_id)
         )
         p2_wins = cur.fetchone()[0]
@@ -307,16 +308,10 @@ def get_player_record(player_id):
     with db_connect() as conn:
         cur = conn.cursor()
 
-        cur.execute(
-            "SELECT COUNT(*) FROM h2h_games WHERE winner_id = ?",
-            (player_id,)
-        )
+        cur.execute("SELECT COUNT(*) FROM h2h_games WHERE winner_id = ?", (player_id,))
         wins = cur.fetchone()[0]
 
-        cur.execute(
-            "SELECT COUNT(*) FROM h2h_games WHERE loser_id = ?",
-            (player_id,)
-        )
+        cur.execute("SELECT COUNT(*) FROM h2h_games WHERE loser_id = ?", (player_id,))
         losses = cur.fetchone()[0]
 
         return wins, losses
@@ -355,10 +350,6 @@ def migrate_json_if_needed():
         print("JSON migration failed:", e)
 
 
-# ----------------------------
-# HELPERS / EMBEDS
-# ----------------------------
-
 def get_remaining():
     advance_end = get_setting("advance_end", "")
 
@@ -390,11 +381,6 @@ def get_unready_mentions():
     ]
 
 
-def member_name(guild, user_id):
-    member = guild.get_member(user_id)
-    return member.display_name if member else f"Unknown User ({user_id})"
-
-
 def make_status_embed(guild):
     players = get_players()
     ready_ids = set(get_ready_players())
@@ -420,11 +406,7 @@ def make_status_embed(guild):
         h = remaining.seconds // 3600
         m = (remaining.seconds % 3600) // 60
 
-        color = (
-            discord.Color.green()
-            if len(unready_players) == 0 and players
-            else discord.Color.gold()
-        )
+        color = discord.Color.green() if len(unready_players) == 0 and players else discord.Color.gold()
 
         description = (
             f"⏳ **Time Left:** {d}d {h}h {m}m\n"
@@ -521,6 +503,7 @@ def make_help_embed():
         value=(
             "`/head2head add` — Add result\n"
             "`/head2head remove` — Remove latest matching result\n"
+            "`/head2head reset` — Reset matchup records\n"
             "`/head2head view` — View matchup record\n"
             "`/head2head player` — View one player's records\n"
             "`/head2head standings` — View overall standings"
@@ -531,7 +514,7 @@ def make_help_embed():
     return embed
 
 
-def make_h2h_view_embed(guild, player1, player2):
+def make_h2h_view_embed(player1, player2):
     p1_wins, p2_wins = get_h2h_record(player1.id, player2.id)
 
     if p1_wins > p2_wins:
@@ -550,17 +533,8 @@ def make_h2h_view_embed(guild, player1, player2):
         color=color
     )
 
-    embed.add_field(
-        name=player1.display_name,
-        value=f"{p1_wins} win(s)",
-        inline=True
-    )
-
-    embed.add_field(
-        name=player2.display_name,
-        value=f"{p2_wins} win(s)",
-        inline=True
-    )
+    embed.add_field(name=player1.display_name, value=f"{p1_wins} win(s)", inline=True)
+    embed.add_field(name=player2.display_name, value=f"{p2_wins} win(s)", inline=True)
 
     return embed
 
@@ -573,34 +547,27 @@ def make_h2h_player_embed(guild, player):
             continue
 
         opponent = guild.get_member(uid)
+
         if not opponent:
             continue
 
         wins, losses = get_h2h_record(player.id, uid)
-
-        if wins == 0 and losses == 0:
-            record = "0-0"
-        else:
-            record = f"{wins}-{losses}"
-
-        lines.append((opponent.display_name, record, wins, losses))
+        lines.append((opponent.display_name, f"{wins}-{losses}"))
 
     lines.sort(key=lambda item: item[0].lower())
+
+    wins, losses = get_player_record(player.id)
 
     embed = discord.Embed(
         title=f"🏈 {player.display_name} Head-to-Head",
         color=discord.Color.blue()
     )
 
-    if not lines:
-        embed.description = "No head-to-head records yet."
-    else:
-        embed.description = "\n".join(
-            f"**vs {name}:** {record}"
-            for name, record, _, _ in lines
-        )
-
-    wins, losses = get_player_record(player.id)
+    embed.description = (
+        "\n".join(f"**vs {name}:** {record}" for name, record in lines)
+        if lines
+        else "No head-to-head records yet."
+    )
 
     embed.set_footer(text=f"Overall: {wins}-{losses}")
 
@@ -642,10 +609,6 @@ def make_h2h_standings_embed(guild):
 
     return embed
 
-
-# ----------------------------
-# REMINDER LOOP
-# ----------------------------
 
 async def reminder_loop():
     await bot.wait_until_ready()
@@ -726,10 +689,6 @@ async def reminder_loop():
         await asyncio.sleep(60)
 
 
-# ----------------------------
-# PLAYER COMMANDS
-# ----------------------------
-
 player_group = app_commands.Group(
     name="player",
     description="Player management"
@@ -740,32 +699,22 @@ player_group = app_commands.Group(
 @app_commands.checks.has_permissions(administrator=True)
 async def player_add(interaction: discord.Interaction, member: discord.Member):
     if is_player(member.id):
-        return await interaction.response.send_message(
-            "Already added.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Already added.", ephemeral=True)
 
     add_player_db(member.id)
 
-    await interaction.response.send_message(
-        f"✅ Added {member.display_name}"
-    )
+    await interaction.response.send_message(f"✅ Added {member.display_name}")
 
 
 @player_group.command(name="remove", description="Remove player")
 @app_commands.checks.has_permissions(administrator=True)
 async def player_remove(interaction: discord.Interaction, member: discord.Member):
     if not is_player(member.id):
-        return await interaction.response.send_message(
-            "Not found.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Not found.", ephemeral=True)
 
     remove_player_db(member.id)
 
-    await interaction.response.send_message(
-        f"🛑 Removed {member.display_name}"
-    )
+    await interaction.response.send_message(f"🛑 Removed {member.display_name}")
 
 
 @player_group.command(name="list", description="List players")
@@ -796,10 +745,6 @@ async def player_list(interaction: discord.Interaction):
 tree.add_command(player_group)
 
 
-# ----------------------------
-# HISTORY COMMANDS
-# ----------------------------
-
 history_group = app_commands.Group(
     name="history",
     description="Team history commands"
@@ -807,10 +752,7 @@ history_group = app_commands.Group(
 
 
 @history_group.command(name="view", description="View team history")
-async def history_view(
-    interaction: discord.Interaction,
-    member: discord.Member = None
-):
+async def history_view(interaction: discord.Interaction, member: discord.Member = None):
     target = member or interaction.user
     teams = get_history(target.id)
 
@@ -866,11 +808,7 @@ async def history_all(interaction: discord.Interaction):
 
 @history_group.command(name="add", description="Add team history")
 @app_commands.checks.has_permissions(administrator=True)
-async def history_add(
-    interaction: discord.Interaction,
-    member: discord.Member,
-    team: str
-):
+async def history_add(interaction: discord.Interaction, member: discord.Member, team: str):
     if not is_player(member.id):
         return await interaction.response.send_message(
             "That player is not registered.",
@@ -892,18 +830,11 @@ async def history_add(
 
 @history_group.command(name="remove", description="Remove team history")
 @app_commands.checks.has_permissions(administrator=True)
-async def history_remove(
-    interaction: discord.Interaction,
-    member: discord.Member,
-    team: str
-):
+async def history_remove(interaction: discord.Interaction, member: discord.Member, team: str):
     removed = remove_history_db(member.id, team)
 
     if not removed:
-        return await interaction.response.send_message(
-            f"**{team}** not found.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message(f"**{team}** not found.", ephemeral=True)
 
     await interaction.response.send_message(
         f"🧹 Removed **{removed}** from {member.display_name}'s history."
@@ -919,24 +850,16 @@ async def history_reset(
 ):
     if all_players:
         reset_history_db()
-        return await interaction.response.send_message(
-            "🧹 Reset history for all players."
-        )
+        return await interaction.response.send_message("🧹 Reset history for all players.")
 
     target = member or interaction.user
     reset_history_db(target.id)
 
-    await interaction.response.send_message(
-        f"🧹 Reset history for {target.display_name}."
-    )
+    await interaction.response.send_message(f"🧹 Reset history for {target.display_name}.")
 
 
 tree.add_command(history_group)
 
-
-# ----------------------------
-# HEAD-TO-HEAD COMMANDS
-# ----------------------------
 
 h2h_group = app_commands.Group(
     name="head2head",
@@ -946,11 +869,7 @@ h2h_group = app_commands.Group(
 
 @h2h_group.command(name="add", description="Add a head-to-head result")
 @app_commands.checks.has_permissions(administrator=True)
-async def h2h_add(
-    interaction: discord.Interaction,
-    winner: discord.Member,
-    loser: discord.Member
-):
+async def h2h_add(interaction: discord.Interaction, winner: discord.Member, loser: discord.Member):
     if winner.id == loser.id:
         return await interaction.response.send_message(
             "Winner and loser cannot be the same player.",
@@ -976,11 +895,7 @@ async def h2h_add(
 
 @h2h_group.command(name="remove", description="Remove latest matching head-to-head result")
 @app_commands.checks.has_permissions(administrator=True)
-async def h2h_remove(
-    interaction: discord.Interaction,
-    winner: discord.Member,
-    loser: discord.Member
-):
+async def h2h_remove(interaction: discord.Interaction, winner: discord.Member, loser: discord.Member):
     if winner.id == loser.id:
         return await interaction.response.send_message(
             "Winner and loser cannot be the same player.",
@@ -1004,27 +919,65 @@ async def h2h_remove(
     await interaction.response.send_message(embed=embed)
 
 
-@h2h_group.command(name="view", description="View record between two players")
-async def h2h_view(
+@h2h_group.command(name="reset", description="Reset head-to-head records")
+@app_commands.checks.has_permissions(administrator=True)
+async def h2h_reset(
     interaction: discord.Interaction,
-    player1: discord.Member,
-    player2: discord.Member
+    player1: discord.Member = None,
+    player2: discord.Member = None,
+    all_players: bool = False
 ):
+    if all_players:
+        reset_h2h()
+
+        embed = discord.Embed(
+            title="🧹 Head-to-Head Records Reset",
+            description="All head-to-head records have been deleted.",
+            color=discord.Color.red()
+        )
+
+        return await interaction.response.send_message(embed=embed)
+
+    if not player1 or not player2:
+        return await interaction.response.send_message(
+            "Provide both players or set all_players to True.",
+            ephemeral=True
+        )
+
     if player1.id == player2.id:
         return await interaction.response.send_message(
             "Choose two different players.",
             ephemeral=True
         )
 
-    embed = make_h2h_view_embed(interaction.guild, player1, player2)
+    reset_h2h(player1.id, player2.id)
+
+    embed = discord.Embed(
+        title="🧹 Matchup Reset",
+        description=(
+            f"Removed all head-to-head games between "
+            f"**{player1.display_name}** and **{player2.display_name}**."
+        ),
+        color=discord.Color.red()
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@h2h_group.command(name="view", description="View record between two players")
+async def h2h_view(interaction: discord.Interaction, player1: discord.Member, player2: discord.Member):
+    if player1.id == player2.id:
+        return await interaction.response.send_message(
+            "Choose two different players.",
+            ephemeral=True
+        )
+
+    embed = make_h2h_view_embed(player1, player2)
     await interaction.response.send_message(embed=embed)
 
 
 @h2h_group.command(name="player", description="View one player's head-to-head records")
-async def h2h_player(
-    interaction: discord.Interaction,
-    player: discord.Member = None
-):
+async def h2h_player(interaction: discord.Interaction, player: discord.Member = None):
     target = player or interaction.user
 
     embed = make_h2h_player_embed(interaction.guild, target)
@@ -1040,15 +993,10 @@ async def h2h_standings(interaction: discord.Interaction):
 tree.add_command(h2h_group)
 
 
-# ----------------------------
-# ADVANCE COMMANDS
-# ----------------------------
-
 @tree.command(name="advance", description="Start/reset advance timer")
 @app_commands.checks.has_permissions(administrator=True)
 async def advance(interaction: discord.Interaction):
     days = int(get_setting("advance_days", "4"))
-
     new_end = datetime.now(timezone.utc) + timedelta(days=days)
 
     set_setting("advance_end", new_end.isoformat())
@@ -1093,10 +1041,7 @@ async def extend(interaction: discord.Interaction, days: int):
     remaining = get_remaining()
 
     if not remaining:
-        return await interaction.response.send_message(
-            "No active advance.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("No active advance.", ephemeral=True)
 
     new_end = datetime.now(timezone.utc) + remaining + timedelta(days=days)
 
@@ -1132,25 +1077,15 @@ async def setdays(interaction: discord.Interaction, days: int):
     await interaction.response.send_message(embed=embed)
 
 
-# ----------------------------
-# READY COMMANDS
-# ----------------------------
-
 @tree.command(name="ready", description="Mark ready")
 async def ready(interaction: discord.Interaction):
     uid = interaction.user.id
 
     if not is_player(uid):
-        return await interaction.response.send_message(
-            "Not registered.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Not registered.", ephemeral=True)
 
     if uid in get_ready_players():
-        return await interaction.response.send_message(
-            "Already ready.",
-            ephemeral=True
-        )
+        return await interaction.response.send_message("Already ready.", ephemeral=True)
 
     mark_ready_db(uid)
 
@@ -1168,11 +1103,7 @@ async def ready(interaction: discord.Interaction):
                 name="Commissioners"
             )
 
-            commissioner_ping = (
-                commissioner_role.mention
-                if commissioner_role
-                else "@Commissioners"
-            )
+            commissioner_ping = commissioner_role.mention if commissioner_role else "@Commissioners"
 
             embed = discord.Embed(
                 title="🏈 Everyone Is Ready!",
@@ -1182,7 +1113,7 @@ async def ready(interaction: discord.Interaction):
             )
 
             await channel.send(
-                f"{commissioner_ping}",
+                commissioner_ping,
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(roles=True)
             )
@@ -1196,10 +1127,6 @@ async def unready(interaction: discord.Interaction):
     await interaction.response.send_message("↩️ Unready")
 
 
-# ----------------------------
-# STATUS / HELP
-# ----------------------------
-
 @tree.command(name="status", description="Show dynasty status")
 async def status(interaction: discord.Interaction):
     embed = make_status_embed(interaction.guild)
@@ -1211,10 +1138,6 @@ async def help_command(interaction: discord.Interaction):
     embed = make_help_embed()
     await interaction.response.send_message(embed=embed)
 
-
-# ----------------------------
-# STARTUP
-# ----------------------------
 
 @bot.event
 async def on_ready():
