@@ -157,6 +157,34 @@ async def player_add(interaction: discord.Interaction, member: discord.Member):
 
     await interaction.response.send_message(f"✅ Added {member.display_name}")
 
+@player_group.command(name="addall", description="Add all server members")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_addall(interaction: discord.Interaction):
+    added = 0
+    skipped = 0
+
+    for member in interaction.guild.members:
+        if member.bot:
+            skipped += 1
+            continue
+
+        if db.is_player(member.id):
+            skipped += 1
+            continue
+
+        db.add_player(member.id)
+        added += 1
+
+    embed = discord.Embed(
+        title="👥 Players Added",
+        description=(
+            f"✅ Added **{added}** player(s)\n"
+            f"⏭️ Skipped **{skipped}** member(s)"
+        ),
+        color=discord.Color.green()
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 @player_group.command(name="remove", description="Remove player")
 @app_commands.checks.has_permissions(administrator=True)
