@@ -35,12 +35,19 @@ ADVANCE_STAGES = [
     "Week 12",
     "Week 13",
     "Week 14",
+    "Week 15",
     "Conference Championship",
-    "Bowl Week",
-    "National Championship",
-    "Offseason",
-    "Recruiting",
-    "Transfer Portal"
+    "Bowl Week 1",
+    "Bowl Week 2",
+    "Bowl Week 3",
+    "Bowl Week 4"
+    "Offseason Portal Week 1",
+    "Offseason Portal Week 2",
+    "Offseason Portal Week 3",
+    "Offseason Portal Week 4",
+    "National Signing Day",
+    "Training Results",
+    "Encourage Transfers",
 ]
 
 
