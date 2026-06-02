@@ -72,6 +72,21 @@ def get_unready_mentions():
     ]
 
 
+def get_output_channel(interaction=None):
+    channel_id = db.get_setting("channel_id", "")
+
+    if channel_id:
+        channel = bot.get_channel(int(channel_id))
+
+        if channel:
+            return channel
+
+    if interaction:
+        return interaction.channel
+
+    return None
+
+
 async def reminder_loop():
     await bot.wait_until_ready()
 
@@ -83,8 +98,7 @@ async def reminder_loop():
                 seconds = remaining.total_seconds()
 
                 if seconds <= 0:
-                    channel_id = db.get_setting("channel_id", "")
-                    channel = bot.get_channel(int(channel_id)) if channel_id else None
+                    channel = get_output_channel()
 
                     if channel:
                         embed = discord.Embed(
@@ -111,8 +125,7 @@ async def reminder_loop():
                     if str(days_left) != str(last_reminder_day):
                         db.set_setting("last_reminder_day", days_left)
 
-                        channel_id = db.get_setting("channel_id", "")
-                        channel = bot.get_channel(int(channel_id)) if channel_id else None
+                        channel = get_output_channel()
 
                         if channel:
                             unready = get_unready_mentions()
@@ -164,6 +177,7 @@ async def player_add(interaction: discord.Interaction, member: discord.Member):
 
     await interaction.response.send_message(f"✅ Added {member.display_name}")
 
+
 @player_group.command(name="addall", description="Add all server members")
 @app_commands.checks.has_permissions(administrator=True)
 async def player_addall(interaction: discord.Interaction):
@@ -193,6 +207,7 @@ async def player_addall(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+
 @player_group.command(name="remove", description="Remove player")
 @app_commands.checks.has_permissions(administrator=True)
 async def player_remove(interaction: discord.Interaction, member: discord.Member):
@@ -202,6 +217,53 @@ async def player_remove(interaction: discord.Interaction, member: discord.Member
     db.remove_player(member.id)
 
     await interaction.response.send_message(f"🛑 Removed {member.display_name}")
+
+
+@player_group.command(name="alias", description="Set a player's schedule/import alias")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_alias(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    alias: str
+):
+    if not db.is_player(member.id):
+        return await interaction.response.send_message(
+            "That user is not registered.",
+            ephemeral=True
+        )
+
+    existing_user_id = db.get_user_id_by_alias(alias)
+
+    if existing_user_id and existing_user_id != member.id:
+        return await interaction.response.send_message(
+            "That alias is already being used by another player.",
+            ephemeral=True
+        )
+
+    db.set_player_alias(member.id, alias)
+
+    await interaction.response.send_message(
+        f"✅ Set alias for {member.display_name} to **{alias}**."
+    )
+
+
+@player_group.command(name="clearalias", description="Clear a player's alias")
+@app_commands.checks.has_permissions(administrator=True)
+async def player_clearalias(
+    interaction: discord.Interaction,
+    member: discord.Member
+):
+    if not db.is_player(member.id):
+        return await interaction.response.send_message(
+            "That user is not registered.",
+            ephemeral=True
+        )
+
+    db.remove_player_alias(member.id)
+
+    await interaction.response.send_message(
+        f"🧹 Cleared alias for {member.display_name}."
+    )
 
 
 @player_group.command(name="list", description="List players")
@@ -216,7 +278,12 @@ async def player_list(interaction: discord.Interaction):
             continue
 
         status = "✅" if uid in ready_ids else "❌"
-        lines.append(f"{status} {member.display_name}")
+        alias = db.get_player_alias(uid)
+
+        if alias:
+            lines.append(f"{status} {member.display_name} — alias: `{alias}`")
+        else:
+            lines.append(f"{status} {member.display_name}")
 
     embed = discord.Embed(
         title="👥 Dynasty Players",
@@ -446,6 +513,20 @@ async def h2h_standings(interaction: discord.Interaction):
 tree.add_command(h2h_group)
 
 
+@tree.command(name="setchannel", description="Set bot announcement channel")
+@app_commands.checks.has_permissions(administrator=True)
+async def setchannel(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+    db.set_setting("channel_id", channel.id)
+
+    await interaction.response.send_message(
+        f"✅ Bot announcements will go to {channel.mention}.",
+        ephemeral=True
+    )
+
+
 @tree.command(name="advance", description="Start/reset advance timer")
 @app_commands.checks.has_permissions(administrator=True)
 @app_commands.choices(stage=[
@@ -461,11 +542,12 @@ async def advance(
     selected_stage = stage.value if stage else ""
 
     db.set_setting("advance_end", new_end.isoformat())
-    db.set_setting("channel_id", interaction.channel.id)
     db.set_setting("last_reminder_day", "")
     db.set_bool_setting("all_ready_sent", False)
     db.set_setting("advance_stage", selected_stage)
     db.clear_ready()
+
+    target_channel = get_output_channel(interaction)
 
     description = f"Advance is in **{days} day(s)**."
 
@@ -479,10 +561,15 @@ async def advance(
         timestamp=datetime.now(timezone.utc)
     )
 
-    await interaction.response.send_message(
+    await target_channel.send(
         "@everyone",
         embed=embed,
         allowed_mentions=discord.AllowedMentions(everyone=True)
+    )
+
+    await interaction.response.send_message(
+        f"✅ Advance started in {target_channel.mention}.",
+        ephemeral=True
     )
 
 
@@ -493,13 +580,20 @@ async def cancel(interaction: discord.Interaction):
     db.clear_ready()
     db.set_bool_setting("all_ready_sent", False)
 
+    target_channel = get_output_channel(interaction)
+
     embed = discord.Embed(
         title="🛑 Advance Cancelled",
         description="The current advance timer has been cancelled.",
         color=discord.Color.red()
     )
 
-    await interaction.response.send_message(embed=embed)
+    await target_channel.send(embed=embed)
+
+    await interaction.response.send_message(
+        f"✅ Advance cancellation posted in {target_channel.mention}.",
+        ephemeral=True
+    )
 
 
 @tree.command(name="extend", description="Extend timer")
@@ -515,13 +609,20 @@ async def extend(interaction: discord.Interaction, days: int):
     db.set_setting("advance_end", new_end.isoformat())
     db.set_setting("last_reminder_day", "")
 
+    target_channel = get_output_channel(interaction)
+
     embed = discord.Embed(
         title="⏳ Advance Timer Extended",
         description=f"Extended by **{days} day(s)**.",
         color=discord.Color.gold()
     )
 
-    await interaction.response.send_message(embed=embed)
+    await target_channel.send(embed=embed)
+
+    await interaction.response.send_message(
+        f"✅ Extension posted in {target_channel.mention}.",
+        ephemeral=True
+    )
 
 
 @tree.command(name="setdays", description="Set default advance days")
@@ -538,7 +639,7 @@ async def setdays(interaction: discord.Interaction, days: int):
         color=discord.Color.green()
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @tree.command(name="ready", description="Mark ready")
@@ -558,8 +659,7 @@ async def ready(interaction: discord.Interaction):
     if db.get_setting("advance_end", "") and everyone_ready() and not db.get_bool_setting("all_ready_sent"):
         db.set_bool_setting("all_ready_sent", True)
 
-        channel_id = db.get_setting("channel_id", "")
-        channel = bot.get_channel(int(channel_id)) if channel_id else None
+        channel = get_output_channel(interaction)
 
         if channel:
             commissioner_role = discord.utils.get(channel.guild.roles, name="Commissioners")
@@ -593,13 +693,20 @@ async def clearready(interaction: discord.Interaction):
     db.clear_ready()
     db.set_bool_setting("all_ready_sent", False)
 
+    target_channel = get_output_channel(interaction)
+
     embed = discord.Embed(
         title="🧹 Ready Status Cleared",
         description="All players have been marked not ready.",
         color=discord.Color.red()
     )
 
-    await interaction.response.send_message(embed=embed)
+    await target_channel.send(embed=embed)
+
+    await interaction.response.send_message(
+        f"✅ Ready statuses cleared and posted in {target_channel.mention}.",
+        ephemeral=True
+    )
 
 
 @tree.command(name="status", description="Show dynasty status")
