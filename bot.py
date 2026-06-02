@@ -45,9 +45,6 @@ ADVANCE_STAGES = [
     "Offseason Portal Week 2",
     "Offseason Portal Week 3",
     "Offseason Portal Week 4",
-    "National Signing Day",
-    "Training Results",
-    "Encourage Transfers",
 ]
 
 
