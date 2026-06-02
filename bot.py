@@ -40,7 +40,7 @@ ADVANCE_STAGES = [
     "Bowl Week 1",
     "Bowl Week 2",
     "Bowl Week 3",
-    "Bowl Week 4"
+    "Bowl Week 4",
     "Offseason Portal Week 1",
     "Offseason Portal Week 2",
     "Offseason Portal Week 3",
