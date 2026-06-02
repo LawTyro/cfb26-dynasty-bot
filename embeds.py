@@ -105,7 +105,8 @@ def make_help_embed():
             "`/advance` — Start/reset timer\n"
             "`/cancel` — Cancel timer\n"
             "`/extend` — Add days to timer\n"
-            "`/setdays` — Set default length"
+            "`/setdays` — Set default length\n"
+            "`/setchannel` — Set output channel"
         ),
         inline=False
     )
@@ -125,8 +126,11 @@ def make_help_embed():
         name="Players",
         value=(
             "`/player add` — Add player\n"
+            "`/player addall` — Add all server members\n"
             "`/player remove` — Remove player\n"
-            "`/player list` — List players"
+            "`/player list` — List players\n"
+            "`/player alias` — Set spreadsheet alias\n"
+            "`/player clearalias` — Clear spreadsheet alias"
         ),
         inline=False
     )
