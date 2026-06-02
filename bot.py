@@ -729,8 +729,8 @@ async def on_ready():
     db.init_db()
     db.migrate_json_if_needed()
 
-    await tree.sync()
-
+    synced = await tree.sync()
+    print(f"Synced {len(synced)} command(s)")
     print(f"Logged in as {bot.user}")
 
     if not hasattr(bot, "reminder_task"):
