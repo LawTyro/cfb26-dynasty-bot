@@ -736,5 +736,17 @@ async def on_ready():
     if not hasattr(bot, "reminder_task"):
         bot.reminder_task = asyncio.create_task(reminder_loop())
 
+@bot.event
+async def on_ready():
+    db.init_db()
+    db.migrate_json_if_needed()
+
+    synced = await tree.sync()
+    print(f"Synced {len(synced)} command(s)")
+    print(f"Commands: {[cmd.name for cmd in synced]}")
+    print(f"Logged in as {bot.user}")
+
+    if not hasattr(bot, "reminder_task"):
+        bot.reminder_task = asyncio.create_task(reminder_loop())
 
 bot.run(TOKEN)
