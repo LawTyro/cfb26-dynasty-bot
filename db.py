@@ -29,6 +29,13 @@ def init_db():
         """)
 
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS player_aliases (
+                user_id INTEGER PRIMARY KEY,
+                alias TEXT UNIQUE NOT NULL
+            )
+        """)
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS ready (
                 user_id INTEGER PRIMARY KEY
             )
@@ -122,7 +129,44 @@ def remove_player(user_id):
         cur = conn.cursor()
         cur.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
         cur.execute("DELETE FROM ready WHERE user_id = ?", (user_id,))
+        cur.execute("DELETE FROM player_aliases WHERE user_id = ?", (user_id,))
         conn.commit()
+
+
+def set_player_alias(user_id, alias):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO player_aliases (user_id, alias) VALUES (?, ?)",
+            (user_id, alias.strip())
+        )
+        conn.commit()
+
+
+def remove_player_alias(user_id):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM player_aliases WHERE user_id = ?", (user_id,))
+        conn.commit()
+
+
+def get_player_alias(user_id):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT alias FROM player_aliases WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def get_user_id_by_alias(alias):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_id FROM player_aliases WHERE LOWER(alias) = LOWER(?)",
+            (alias.strip(),)
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 def get_ready_players():
