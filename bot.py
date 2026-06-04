@@ -849,7 +849,50 @@ async def ready(interaction: discord.Interaction):
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions(roles=True)
             )
+            
+@tree.command(name="setready", description="Mark another player as ready")
+@app_commands.checks.has_permissions(administrator=True)
+async def setready(interaction: discord.Interaction, member: discord.Member):
+    if not db.is_player(member.id):
+        return await interaction.response.send_message(
+            "That user is not registered.",
+            ephemeral=True
+        )
 
+    if member.id in db.get_ready_players():
+        return await interaction.response.send_message(
+            f"{member.display_name} is already ready.",
+            ephemeral=True
+        )
+
+    db.mark_ready(member.id)
+
+    await interaction.response.send_message(
+        f"✅ Marked {member.display_name} as ready.",
+        ephemeral=True
+    )
+
+    if db.get_setting("advance_end", "") and everyone_ready() and not db.get_bool_setting("all_ready_sent"):
+        db.set_bool_setting("all_ready_sent", True)
+
+        channel = get_output_channel(interaction)
+
+        if channel:
+            commissioner_role = discord.utils.get(channel.guild.roles, name="Commissioner")
+            commissioner_ping = commissioner_role.mention if commissioner_role else "@Commissioner"
+
+            embed = discord.Embed(
+                title="🏈 Everyone Is Ready!",
+                description="Commissioners can advance the league.",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+
+            await channel.send(
+                commissioner_ping,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(roles=True)
+            )
 
 @tree.command(name="unready", description="Mark unready")
 async def unready(interaction: discord.Interaction):
