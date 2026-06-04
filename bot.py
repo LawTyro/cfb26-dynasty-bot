@@ -1,11 +1,13 @@
 import os
 import math
 import asyncio
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands
 from discord import app_commands
+import openpyxl
 
 import db
 import embeds
@@ -46,6 +48,19 @@ ADVANCE_STAGES = [
     "Offseason Portal Week 3",
     "Offseason Portal Week 4",
 ]
+
+
+async def stage_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    current = current.lower()
+
+    return [
+        app_commands.Choice(name=stage, value=stage)
+        for stage in ADVANCE_STAGES
+        if current in stage.lower()
+    ][:25]
 
 
 def everyone_ready():
@@ -510,6 +525,169 @@ async def h2h_standings(interaction: discord.Interaction):
 tree.add_command(h2h_group)
 
 
+schedule_group = app_commands.Group(name="schedule", description="Schedule commands")
+
+
+@schedule_group.command(name="import", description="Import schedule from Excel")
+@app_commands.checks.has_permissions(administrator=True)
+async def schedule_import(
+    interaction: discord.Interaction,
+    file: discord.Attachment
+):
+    await interaction.response.defer(ephemeral=True)
+
+    if not file.filename.lower().endswith(".xlsx"):
+        return await interaction.followup.send(
+            "Please upload an `.xlsx` Excel file.",
+            ephemeral=True
+        )
+
+    temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    await file.save(temp_path)
+
+    imported = 0
+    skipped_aliases = set()
+
+    try:
+        workbook = openpyxl.load_workbook(temp_path, data_only=True)
+        sheet = workbook.active
+
+        db.clear_schedule()
+
+        for row in range(2, sheet.max_row + 1):
+            alias = sheet.cell(row=row, column=1).value
+
+            if not alias:
+                continue
+
+            alias = str(alias).strip()
+            user_id = db.get_user_id_by_alias(alias)
+
+            if not user_id:
+                skipped_aliases.add(alias)
+                continue
+
+            for col in range(2, sheet.max_column + 1, 2):
+                week = sheet.cell(row=1, column=col).value
+                opponent = sheet.cell(row=row, column=col).value
+                user_marker = sheet.cell(row=row, column=col + 1).value
+
+                if not week or not opponent:
+                    continue
+
+                is_user_game = (
+                    str(user_marker).strip().upper() == "X"
+                    if user_marker
+                    else False
+                )
+
+                db.set_schedule_game(
+                    user_id=user_id,
+                    week=str(week).strip(),
+                    opponent=str(opponent).strip(),
+                    is_user_game=is_user_game
+                )
+
+                imported += 1
+
+        message = f"✅ Imported **{imported}** scheduled game(s)."
+
+        if skipped_aliases:
+            message += "\n\n⚠️ These spreadsheet names do not have aliases:\n"
+            message += ", ".join(sorted(skipped_aliases))
+
+        await interaction.followup.send(message, ephemeral=True)
+
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+
+@schedule_group.command(name="clear", description="Clear imported schedule")
+@app_commands.checks.has_permissions(administrator=True)
+async def schedule_clear(interaction: discord.Interaction):
+    db.clear_schedule()
+    await interaction.response.send_message("🧹 Schedule cleared.", ephemeral=True)
+
+
+@schedule_group.command(name="current", description="Show current week schedule")
+async def schedule_current(interaction: discord.Interaction):
+    stage = db.get_setting("advance_stage", "")
+
+    if not stage:
+        return await interaction.response.send_message(
+            "No current stage is set.",
+            ephemeral=True
+        )
+
+    rows = db.get_schedule_for_week(stage)
+
+    if not rows:
+        return await interaction.response.send_message(
+            f"No schedule found for **{stage}**.",
+            ephemeral=True
+        )
+
+    lines = []
+
+    for user_id, opponent, is_user_game in rows:
+        member = interaction.guild.get_member(user_id)
+        name = member.display_name if member else f"<@{user_id}>"
+
+        line = f"{name} v. {opponent}"
+
+        if is_user_game:
+            line += " (USER)"
+
+        lines.append(line)
+
+    embed = discord.Embed(
+        title=f"📅 Schedule — {stage}",
+        description="\n".join(lines),
+        color=discord.Color.blue()
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@schedule_group.command(name="player", description="Show one player's schedule")
+async def schedule_player(
+    interaction: discord.Interaction,
+    member: discord.Member = None
+):
+    target = member or interaction.user
+    rows = db.get_schedule_for_player(target.id)
+
+    if not rows:
+        return await interaction.response.send_message(
+            f"No schedule found for {target.display_name}.",
+            ephemeral=True
+        )
+
+    lines = []
+
+    for week, opponent, is_user_game in rows:
+        line = f"**{week}:** {target.display_name} v. {opponent}"
+
+        if is_user_game:
+            line += " (USER)"
+
+        lines.append(line)
+
+    embed = discord.Embed(
+        title=f"📅 {target.display_name}'s Schedule",
+        description="\n".join(lines),
+        color=discord.Color.blue()
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+tree.add_command(schedule_group)
+
+
 @tree.command(name="setchannel", description="Set bot announcement channel")
 @app_commands.checks.has_permissions(administrator=True)
 async def setchannel(
@@ -526,17 +704,14 @@ async def setchannel(
 
 @tree.command(name="advance", description="Start/reset advance timer")
 @app_commands.checks.has_permissions(administrator=True)
-@app_commands.choices(stage=[
-    app_commands.Choice(name=stage, value=stage)
-    for stage in ADVANCE_STAGES
-])
+@app_commands.autocomplete(stage=stage_autocomplete)
 async def advance(
     interaction: discord.Interaction,
-    stage: app_commands.Choice[str] = None
+    stage: str = None
 ):
     days = int(db.get_setting("advance_days", "4"))
     new_end = datetime.now(timezone.utc) + timedelta(days=days)
-    selected_stage = stage.value if stage else ""
+    selected_stage = stage or ""
 
     db.set_setting("advance_end", new_end.isoformat())
     db.set_setting("last_reminder_day", "")
@@ -720,6 +895,7 @@ async def help_command(interaction: discord.Interaction):
         ephemeral=True
     )
 
+
 @bot.event
 async def on_ready():
     db.init_db()
@@ -732,9 +908,6 @@ async def on_ready():
 
     if not hasattr(bot, "reminder_task"):
         bot.reminder_task = asyncio.create_task(reminder_loop())
-
-
-bot.run(TOKEN)
 
 
 bot.run(TOKEN)
