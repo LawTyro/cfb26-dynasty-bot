@@ -138,6 +138,7 @@ def make_help_embed():
         name="Readiness",
         value=(
             "`/ready` — Mark yourself ready\n"
+            "`/setready` — Mark another player ready\n"
             "`/unready` — Remove ready status\n"
             "`/clearready` — Clear all ready statuses\n"
             "`/status` — Show league dashboard"
