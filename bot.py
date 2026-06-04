@@ -659,8 +659,8 @@ async def ready(interaction: discord.Interaction):
         channel = get_output_channel(interaction)
 
         if channel:
-            commissioner_role = discord.utils.get(channel.guild.roles, name="Commissioners")
-            commissioner_ping = commissioner_role.mention if commissioner_role else "@Commissioners"
+            commissioner_role = discord.utils.get(channel.guild.roles, name="Commissioner")
+            commissioner_ping = commissioner_role.mention if commissioner_role else "@Commissioner"
 
             embed = discord.Embed(
                 title="🏈 Everyone Is Ready!",
