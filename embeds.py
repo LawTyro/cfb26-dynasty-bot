@@ -75,6 +75,29 @@ def make_status_embed(guild):
         timestamp=datetime.now(timezone.utc)
     )
 
+    if stage:
+        schedule_rows = db.get_schedule_for_week(stage)
+
+        if schedule_rows:
+            schedule_lines = []
+
+            for user_id, opponent, is_user_game in schedule_rows:
+                member = guild.get_member(user_id)
+                name = member.display_name if member else f"<@{user_id}>"
+
+                line = f"{name} v. {opponent}"
+
+                if is_user_game:
+                    line += " (USER)"
+
+                schedule_lines.append(line)
+
+            embed.add_field(
+                name="📅 This Week's Schedule",
+                value="\n".join(schedule_lines),
+                inline=False
+            )
+
     embed.add_field(
         name=f"✅ Ready ({len(ready_players)})",
         value="\n".join(ready_players) if ready_players else "Nobody",
@@ -131,6 +154,17 @@ def make_help_embed():
             "`/player list` — List players\n"
             "`/player alias` — Set spreadsheet alias\n"
             "`/player clearalias` — Clear spreadsheet alias"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Schedule",
+        value=(
+            "`/schedule import` — Import Excel schedule\n"
+            "`/schedule clear` — Clear imported schedule\n"
+            "`/schedule current` — Show current week schedule\n"
+            "`/schedule player` — Show one player's schedule"
         ),
         inline=False
     )
