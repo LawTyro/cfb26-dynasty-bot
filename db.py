@@ -42,6 +42,17 @@ def init_db():
         """)
 
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                week TEXT NOT NULL,
+                opponent TEXT NOT NULL,
+                is_user_game INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(user_id, week)
+            )
+        """)
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS team_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -130,6 +141,7 @@ def remove_player(user_id):
         cur.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
         cur.execute("DELETE FROM ready WHERE user_id = ?", (user_id,))
         cur.execute("DELETE FROM player_aliases WHERE user_id = ?", (user_id,))
+        cur.execute("DELETE FROM schedules WHERE user_id = ?", (user_id,))
         conn.commit()
 
 
@@ -195,6 +207,56 @@ def clear_ready():
         cur = conn.cursor()
         cur.execute("DELETE FROM ready")
         conn.commit()
+
+
+def clear_schedule():
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM schedules")
+        conn.commit()
+
+
+def set_schedule_game(user_id, week, opponent, is_user_game=False):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO schedules (user_id, week, opponent, is_user_game)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, week)
+            DO UPDATE SET
+                opponent = excluded.opponent,
+                is_user_game = excluded.is_user_game
+        """, (
+            user_id,
+            str(week).strip(),
+            str(opponent).strip(),
+            1 if is_user_game else 0
+        ))
+        conn.commit()
+
+
+def get_schedule_for_week(week):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT user_id, opponent, is_user_game
+            FROM schedules
+            WHERE week = ?
+            ORDER BY user_id
+        """, (week,))
+        return cur.fetchall()
+
+
+def get_schedule_for_player(user_id):
+    with db_connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT week, opponent, is_user_game
+            FROM schedules
+            WHERE user_id = ?
+            ORDER BY id
+        """, (user_id,))
+        return cur.fetchall()
 
 
 def add_history(user_id, team):
