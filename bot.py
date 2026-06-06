@@ -706,7 +706,6 @@ async def setchannel(
 
 
 @tree.command(name="advance", description="Start/reset advance timer")
-@app_commands.checks.has_permissions(administrator=True)
 @app_commands.autocomplete(stage=stage_autocomplete)
 async def advance(
     interaction: discord.Interaction,
