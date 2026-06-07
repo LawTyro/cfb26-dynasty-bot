@@ -695,10 +695,10 @@ async def schedule_player(
         if is_user_game:
             display += " (USER)"
 
-        line = f"{week:<8} {display}"
+        line = f"{week:<8} │ {display}"
 
-        if week == current_stage:
-            line = f"🔹 **{line}**"
+	if week == current_stage:
+    	    line = f"🔹 {line}"
 
         lines.append(line)
 
