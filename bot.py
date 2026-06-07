@@ -697,8 +697,8 @@ async def schedule_player(
 
         line = f"{week:<8} │ {display}"
 
-	if week == current_stage:
-    	    line = f"🔹 {line}"
+        if week == current_stage:
+            line = f"🔹 {line}"
 
         lines.append(line)
 
