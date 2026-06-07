@@ -693,7 +693,7 @@ async def schedule_player(
         display = format_schedule_opponent(opponent)
 
         short_week = week.replace("Week ", "W")
-        line = f"{short_week:<4} | {display}"
+        line = f"{short_week:<3} {display}"
 
         if is_user_game:
             line += " *"
