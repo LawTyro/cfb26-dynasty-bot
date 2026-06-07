@@ -15,6 +15,15 @@ def get_remaining():
     return end - datetime.now(timezone.utc)
 
 
+def format_opponent(opponent):
+    opponent = str(opponent).strip()
+
+    if opponent.lower().startswith("at "):
+        return "@ " + opponent[3:].strip()
+
+    return "vs " + opponent
+
+
 def make_status_embed(guild):
     players = db.get_players()
     ready_ids = set(db.get_ready_players())
@@ -85,7 +94,8 @@ def make_status_embed(guild):
                 member = guild.get_member(user_id)
                 name = member.display_name if member else f"<@{user_id}>"
 
-                line = f"{name} v. {opponent}"
+                display_opponent = format_opponent(opponent)
+                line = f"🏈 {name} {display_opponent}"
 
                 if is_user_game:
                     line += " (USER)"
@@ -93,7 +103,7 @@ def make_status_embed(guild):
                 schedule_lines.append(line)
 
             embed.add_field(
-                name="📅 This Week's Schedule",
+                name=f"📅 {stage}",
                 value="\n".join(schedule_lines),
                 inline=False
             )
