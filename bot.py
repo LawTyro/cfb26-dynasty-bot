@@ -115,19 +115,12 @@ def format_current_schedule_line(name, opponent, is_user_game):
     display = format_schedule_opponent(opponent)
 
     if display.startswith("@ "):
-        line = f"🏈 {name} {display}"
+        line = f"🏈 {name} - {display}"
     else:
-        line = f"🏈 {name} vs {display}"
+        line = f"🏈 {name} - vs {display}"
 
     if is_user_game:
-        display += " *"
-
-    description = (
-    "```text\n"
-    + "\n".join(lines)
-    + "\n```"
-    + "\n`* = user game`"
-)
+        line += " *"
 
     return line
 
