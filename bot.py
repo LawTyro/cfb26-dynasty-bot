@@ -102,6 +102,29 @@ def get_output_channel(interaction=None):
     return None
 
 
+def format_schedule_opponent(opponent):
+    display = str(opponent).strip()
+
+    if display.lower().startswith("at "):
+        return "@ " + display[3:].strip()
+
+    return display
+
+
+def format_current_schedule_line(name, opponent, is_user_game):
+    display = format_schedule_opponent(opponent)
+
+    if display.startswith("@ "):
+        line = f"🏈 {name} {display}"
+    else:
+        line = f"🏈 {name} vs {display}"
+
+    if is_user_game:
+        line += " (USER)"
+
+    return line
+
+
 async def reminder_loop():
     await bot.wait_until_ready()
 
@@ -638,16 +661,10 @@ async def schedule_current(interaction: discord.Interaction):
     for user_id, opponent, is_user_game in rows:
         member = interaction.guild.get_member(user_id)
         name = member.display_name if member else f"<@{user_id}>"
-
-        line = f"{name} v. {opponent}"
-
-        if is_user_game:
-            line += " (USER)"
-
-        lines.append(line)
+        lines.append(format_current_schedule_line(name, opponent, is_user_game))
 
     embed = discord.Embed(
-        title=f"📅 Schedule — {stage}",
+        title=f"📅 {stage}",
         description="\n".join(lines),
         color=discord.Color.blue()
     )
@@ -669,18 +686,24 @@ async def schedule_player(
             ephemeral=True
         )
 
+    current_stage = db.get_setting("advance_stage", "")
     lines = []
 
     for week, opponent, is_user_game in rows:
-        line = f"**{week}:** {target.display_name} v. {opponent}"
+        display = format_schedule_opponent(opponent)
 
         if is_user_game:
-            line += " (USER)"
+            display += " (USER)"
+
+        line = f"{week:<8} {display}"
+
+        if week == current_stage:
+            line = f"🔹 **{line}**"
 
         lines.append(line)
 
     embed = discord.Embed(
-        title=f"📅 {target.display_name}'s Schedule",
+        title=f"📅 {target.display_name}",
         description="\n".join(lines),
         color=discord.Color.blue()
     )
