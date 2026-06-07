@@ -18,51 +18,7 @@ import embeds
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
-intents.members = True@schedule_group.command(name="player", description="Show one player's schedule")
-async def schedule_player(
-    interaction: discord.Interaction,
-    member: discord.Member = None
-):
-    target = member or interaction.user
-    rows = db.get_schedule_for_player(target.id)
-
-    if not rows:
-        return await interaction.response.send_message(
-            f"No schedule found for {target.display_name}.",
-            ephemeral=True
-        )
-
-    current_stage = db.get_setting("advance_stage", "")
-    lines = []
-
-    for week, opponent, is_user_game in rows:
-        display = format_schedule_opponent(opponent)
-
-        short_week = week.replace("Week ", "W")
-        line = f"{short_week:<4} | {display}"
-
-        if is_user_game:
-            line += " *"
-
-        if week == current_stage:
-            line = f"> {line}"
-        else:
-            line = f"  {line}"
-
-        lines.append(line)
-
-    embed = discord.Embed(
-        title=f"📅 {target.display_name}'s Schedule",
-        description=(
-            "```text\n"
-            + "\n".join(lines)
-            + "\n```"
-            + "\n`* = user game`"
-        ),
-        color=discord.Color.blue()
-    )
-
-    await interaction.response.send_message(embed=embed)@sch
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
