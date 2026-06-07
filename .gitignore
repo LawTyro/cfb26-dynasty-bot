@@ -1,0 +1,5 @@
+.env
+dynasty.db
+__pycache__/
+*.pyc
+.venv/
