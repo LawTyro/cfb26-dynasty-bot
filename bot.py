@@ -120,7 +120,14 @@ def format_current_schedule_line(name, opponent, is_user_game):
         line = f"🏈 {name} vs {display}"
 
     if is_user_game:
-        line += " (USER)"
+        display += " *"
+
+    description = (
+    "```text\n"
+    + "\n".join(lines)
+    + "\n```"
+    + "\n`* = user game`"
+)
 
     return line
 
@@ -705,10 +712,15 @@ async def schedule_player(
         lines.append(line)
 
     embed = discord.Embed(
-        title=f"📅 {target.display_name}",
-        description="```text\n" + "\n".join(lines) + "\n```",
-        color=discord.Color.blue()
-    )
+    title=f"📅 {target.display_name}'s Schedule",
+    description=(
+        "```text\n"
+        + "\n".join(lines)
+        + "\n```"
+        + "\n`* = user game`"
+    ),
+    color=discord.Color.blue()
+)
 
     await interaction.response.send_message(embed=embed)
 
