@@ -689,20 +689,20 @@ async def schedule_player(
     current_stage = db.get_setting("advance_stage", "")
     lines = []
 
-    for week, opponent, is_user_game in rows:
-        display = format_schedule_opponent(opponent)
+for week, opponent, is_user_game in rows:
+    display = format_schedule_opponent(opponent)
 
-        if is_user_game:
-            display += " (USER)"
+    line = f"{week:<8} | {display}"
 
-        line = f"{week:<8} | {display}"
+    if is_user_game:
+        line += " *"
 
-        if week == current_stage:
-            line = f"> {line}"
-        else:
-            line = f"  {line}"
+    if week == current_stage:
+        line = f"> {line}"
+    else:
+        line = f"  {line}"
 
-        lines.append(line)
+    lines.append(line)
 
     embed = discord.Embed(
     title=f"📅 {target.display_name}'s Schedule",
