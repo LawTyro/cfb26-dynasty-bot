@@ -28,6 +28,15 @@ def make_status_embed(guild):
     players = db.get_players()
     ready_ids = set(db.get_ready_players())
 
+    remaining = get_remaining()
+    stage = db.get_setting("advance_stage", "")
+
+    schedule_by_user = {}
+
+    if stage:
+        for user_id, opponent, is_user_game in db.get_schedule_for_week(stage):
+            schedule_by_user[user_id] = opponent
+
     ready_players = []
     unready_players = []
 
@@ -37,13 +46,18 @@ def make_status_embed(guild):
         if not member:
             continue
 
-        if uid in ready_ids:
-            ready_players.append(member.display_name)
-        else:
-            unready_players.append(member.display_name)
+        name = member.display_name
+        opponent = schedule_by_user.get(uid)
 
-    remaining = get_remaining()
-    stage = db.get_setting("advance_stage", "")
+        if opponent:
+            player_line = f"{name} {format_opponent(opponent)}"
+        else:
+            player_line = name
+
+        if uid in ready_ids:
+            ready_players.append(player_line)
+        else:
+            unready_players.append(player_line)
 
     if remaining and remaining.total_seconds() > 0:
         d = remaining.days
@@ -83,30 +97,6 @@ def make_status_embed(guild):
         color=color,
         timestamp=datetime.now(timezone.utc)
     )
-
-    if stage:
-        schedule_rows = db.get_schedule_for_week(stage)
-
-        if schedule_rows:
-            schedule_lines = []
-
-            for user_id, opponent, is_user_game in schedule_rows:
-                member = guild.get_member(user_id)
-                name = member.display_name if member else f"<@{user_id}>"
-
-                display_opponent = format_opponent(opponent)
-                line = f"🏈 {name} {display_opponent}"
-
-                if is_user_game:
-                    line += " (USER)"
-
-                schedule_lines.append(line)
-
-            embed.add_field(
-                name=f"📅 {stage}",
-                value="\n".join(schedule_lines),
-                inline=False
-            )
 
     embed.add_field(
         name=f"✅ Ready ({len(ready_players)})",
