@@ -759,7 +759,11 @@ async def advance(
     days = int(db.get_setting("advance_days", "4"))
     new_end = datetime.now(timezone.utc) + timedelta(days=days)
     selected_stage = stage or ""
-
+try:
+    create_database_backup()
+except Exception as e:
+    print("Auto backup failed:", e)
+    
     db.set_setting("advance_end", new_end.isoformat())
     db.set_setting("last_reminder_day", "")
     db.set_bool_setting("all_ready_sent", False)
