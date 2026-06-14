@@ -1,5 +1,6 @@
 .env
-dynasty.db
+*.db
+*.db-*
 __pycache__/
 *.pyc
-.venv/
+backups/
