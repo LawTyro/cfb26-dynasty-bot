@@ -101,14 +101,14 @@ async def reminder_loop():
 
 
 def register_commands():
-    players.setup(tree)
+    players.setup(tree, bot)
     history.setup(tree)
     h2h.setup(tree)
-    schedule.setup(tree)
+    schedule.setup(tree, bot)
     advance.setup(tree, bot)
     readiness.setup(tree, bot)
-    backup.setup(tree)
-    misc.setup(tree)
+    backup.setup(tree, bot)
+    misc.setup(tree, bot)
 
 
 register_commands()

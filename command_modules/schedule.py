@@ -6,10 +6,10 @@ from discord import app_commands
 import openpyxl
 
 import db
-from utils import format_current_schedule_line, format_schedule_opponent
+from utils import format_current_schedule_line, format_schedule_opponent, log_activity
 
 
-def setup(tree):
+def setup(tree, bot):
     schedule_group = app_commands.Group(name="schedule", description="Schedule commands")
 
     @schedule_group.command(name="import", description="Import schedule from Excel")
@@ -79,6 +79,18 @@ def setup(tree):
 
             await interaction.followup.send(message, ephemeral=True)
 
+            log_description = f"Imported **{imported}** scheduled game(s) from `{file.filename}`."
+            if skipped_aliases:
+                log_description += "\nSkipped aliases: " + ", ".join(sorted(skipped_aliases))
+
+            await log_activity(
+                bot,
+                interaction,
+                "📅 Schedule Imported",
+                log_description,
+                discord.Color.green()
+            )
+
         finally:
             try:
                 os.remove(temp_path)
@@ -89,7 +101,15 @@ def setup(tree):
     @app_commands.checks.has_permissions(administrator=True)
     async def schedule_clear(interaction: discord.Interaction):
         db.clear_schedule()
+
         await interaction.response.send_message("🧹 Schedule cleared.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "🧹 Schedule Cleared",
+            "The imported schedule was cleared.",
+            discord.Color.red()
+        )
 
     @schedule_group.command(name="current", description="Show current week schedule")
     async def schedule_current(interaction: discord.Interaction):
@@ -165,6 +185,13 @@ def setup(tree):
             color=discord.Color.blue()
         )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "📅 Player Schedule Viewed",
+            f"{interaction.user.display_name} viewed **{target.display_name}**'s schedule.",
+            discord.Color.blue()
+        )
 
     tree.add_command(schedule_group)

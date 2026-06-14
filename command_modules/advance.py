@@ -7,7 +7,7 @@ import db
 import embeds
 from backup_utils import create_database_backup
 from constants import stage_autocomplete
-from utils import get_output_channel
+from utils import get_output_channel, log_activity
 
 
 def setup(tree, bot):
@@ -29,29 +29,20 @@ def setup(tree, bot):
         db.set_setting("advance_stage", selected_stage)
         db.clear_ready()
 
-        target_channel = get_output_channel(bot, interaction)
-
         description = f"Advance is in **{days} day(s)**."
 
         if selected_stage:
             description += f"\nAdvanced to: **{selected_stage}**"
 
-        embed = discord.Embed(
-            title="🏈 Advance Timer Started",
-            description=description,
-            color=discord.Color.gold(),
-            timestamp=datetime.now(timezone.utc)
-        )
-
-        await target_channel.send(
-            "@everyone",
-            embed=embed,
+        await interaction.response.send_message("✅ Advance started.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "🏈 Advance Timer Started",
+            description,
+            discord.Color.gold(),
+            mention="@everyone",
             allowed_mentions=discord.AllowedMentions(everyone=True)
-        )
-
-        await interaction.response.send_message(
-            f"✅ Advance started in {target_channel.mention}.",
-            ephemeral=True
         )
 
     @tree.command(name="cancel", description="Cancel advance")
@@ -61,19 +52,13 @@ def setup(tree, bot):
         db.clear_ready()
         db.set_bool_setting("all_ready_sent", False)
 
-        target_channel = get_output_channel(bot, interaction)
-
-        embed = discord.Embed(
-            title="🛑 Advance Cancelled",
-            description="The current advance timer has been cancelled.",
-            color=discord.Color.red()
-        )
-
-        await target_channel.send(embed=embed)
-
-        await interaction.response.send_message(
-            f"✅ Advance cancellation posted in {target_channel.mention}.",
-            ephemeral=True
+        await interaction.response.send_message("✅ Advance cancelled.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "🛑 Advance Cancelled",
+            "The current advance timer has been cancelled.",
+            discord.Color.red()
         )
 
     @tree.command(name="extend", description="Extend timer")
@@ -89,19 +74,13 @@ def setup(tree, bot):
         db.set_setting("advance_end", new_end.isoformat())
         db.set_setting("last_reminder_day", "")
 
-        target_channel = get_output_channel(bot, interaction)
-
-        embed = discord.Embed(
-            title="⏳ Advance Timer Extended",
-            description=f"Extended by **{days} day(s)**.",
-            color=discord.Color.gold()
-        )
-
-        await target_channel.send(embed=embed)
-
-        await interaction.response.send_message(
-            f"✅ Extension posted in {target_channel.mention}.",
-            ephemeral=True
+        await interaction.response.send_message("✅ Advance extended.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "⏳ Advance Timer Extended",
+            f"Extended by **{days} day(s)**.",
+            discord.Color.gold()
         )
 
     @tree.command(name="setdays", description="Set default advance days")
@@ -112,10 +91,14 @@ def setup(tree, bot):
 
         db.set_setting("advance_days", days)
 
-        embed = discord.Embed(
-            title="✅ Default Advance Length Updated",
-            description=f"Default advance length set to **{days} day(s)**.",
-            color=discord.Color.green()
+        await interaction.response.send_message(
+            f"✅ Default advance length set to **{days} day(s)**.",
+            ephemeral=True
         )
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "✅ Default Advance Length Updated",
+            f"Default advance length set to **{days} day(s)**.",
+            discord.Color.green()
+        )

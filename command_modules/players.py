@@ -2,9 +2,10 @@ import discord
 from discord import app_commands
 
 import db
+from utils import log_activity
 
 
-def setup(tree):
+def setup(tree, bot):
     player_group = app_commands.Group(name="player", description="Player management")
 
     @player_group.command(name="add", description="Add player")
@@ -14,7 +15,15 @@ def setup(tree):
             return await interaction.response.send_message("Already added.", ephemeral=True)
 
         db.add_player(member.id)
-        await interaction.response.send_message(f"✅ Added {member.display_name}")
+
+        await interaction.response.send_message(f"✅ Added {member.display_name}", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "👥 Player Added",
+            f"**{member.display_name}** was added as a dynasty player.",
+            discord.Color.green()
+        )
 
     @player_group.command(name="addall", description="Add all server members")
     @app_commands.checks.has_permissions(administrator=True)
@@ -34,16 +43,16 @@ def setup(tree):
             db.add_player(member.id)
             added += 1
 
-        embed = discord.Embed(
-            title="👥 Players Added",
-            description=(
-                f"✅ Added **{added}** player(s)\n"
-                f"⏭️ Skipped **{skipped}** member(s)"
-            ),
-            color=discord.Color.green()
-        )
+        message = f"✅ Added **{added}** player(s). Skipped **{skipped}** member(s)."
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(message, ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "👥 Players Added",
+            f"Added **{added}** player(s). Skipped **{skipped}** member(s).",
+            discord.Color.green()
+        )
 
     @player_group.command(name="remove", description="Remove player")
     @app_commands.checks.has_permissions(administrator=True)
@@ -52,7 +61,15 @@ def setup(tree):
             return await interaction.response.send_message("Not found.", ephemeral=True)
 
         db.remove_player(member.id)
-        await interaction.response.send_message(f"🛑 Removed {member.display_name}")
+
+        await interaction.response.send_message(f"🛑 Removed {member.display_name}", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "🛑 Player Removed",
+            f"**{member.display_name}** was removed from dynasty players.",
+            discord.Color.red()
+        )
 
     @player_group.command(name="alias", description="Set a player's schedule/import alias")
     @app_commands.checks.has_permissions(administrator=True)
@@ -72,8 +89,17 @@ def setup(tree):
             )
 
         db.set_player_alias(member.id, alias)
+
         await interaction.response.send_message(
-            f"✅ Set alias for {member.display_name} to **{alias}**."
+            f"✅ Set alias for {member.display_name} to **{alias}**.",
+            ephemeral=True
+        )
+        await log_activity(
+            bot,
+            interaction,
+            "🏷️ Player Alias Set",
+            f"**{member.display_name}** alias set to `{alias}`.",
+            discord.Color.blue()
         )
 
     @player_group.command(name="clearalias", description="Clear a player's alias")
@@ -86,8 +112,17 @@ def setup(tree):
             )
 
         db.remove_player_alias(member.id)
+
         await interaction.response.send_message(
-            f"🧹 Cleared alias for {member.display_name}."
+            f"🧹 Cleared alias for {member.display_name}.",
+            ephemeral=True
+        )
+        await log_activity(
+            bot,
+            interaction,
+            "🧹 Player Alias Cleared",
+            f"Alias cleared for **{member.display_name}**.",
+            discord.Color.gold()
         )
 
     @player_group.command(name="list", description="List players")
@@ -115,6 +150,13 @@ def setup(tree):
             color=discord.Color.blue()
         )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "👥 Player List Viewed",
+            f"{interaction.user.display_name} viewed the player list.",
+            discord.Color.blue()
+        )
 
     tree.add_command(player_group)

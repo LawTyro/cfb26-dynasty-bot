@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 
 import db
-from utils import get_output_channel, maybe_send_everyone_ready
+from utils import get_output_channel, log_activity, maybe_send_everyone_ready
 
 
 def setup(tree, bot):
@@ -19,7 +19,15 @@ def setup(tree, bot):
             return await interaction.response.send_message("Already ready.", ephemeral=True)
 
         db.mark_ready(uid)
-        await interaction.response.send_message("✅ Ready!")
+
+        await interaction.response.send_message("✅ Ready!", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "✅ Player Ready",
+            f"**{interaction.user.display_name}** marked ready.",
+            discord.Color.green()
+        )
         await maybe_send_everyone_ready(bot, interaction)
 
     @tree.command(name="setready", description="Mark another player as ready")
@@ -43,6 +51,13 @@ def setup(tree, bot):
             f"✅ Marked {member.display_name} as ready.",
             ephemeral=True
         )
+        await log_activity(
+            bot,
+            interaction,
+            "✅ Player Marked Ready",
+            f"**{member.display_name}** was marked ready by **{interaction.user.display_name}**.",
+            discord.Color.green()
+        )
 
         await maybe_send_everyone_ready(bot, interaction)
 
@@ -51,7 +66,14 @@ def setup(tree, bot):
         db.mark_unready(interaction.user.id)
         db.set_bool_setting("all_ready_sent", False)
 
-        await interaction.response.send_message("↩️ Unready")
+        await interaction.response.send_message("↩️ Unready", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "↩️ Player Unready",
+            f"**{interaction.user.display_name}** marked unready.",
+            discord.Color.gold()
+        )
 
     @tree.command(name="clearready", description="Clear all ready statuses")
     @app_commands.checks.has_permissions(administrator=True)
@@ -68,9 +90,10 @@ def setup(tree, bot):
             timestamp=datetime.now(timezone.utc)
         )
 
-        await target_channel.send(embed=embed)
+        if target_channel:
+            await target_channel.send(embed=embed)
 
         await interaction.response.send_message(
-            f"✅ Ready statuses cleared and posted in {target_channel.mention}.",
+            "✅ Ready statuses cleared.",
             ephemeral=True
         )
