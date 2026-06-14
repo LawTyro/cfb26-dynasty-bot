@@ -15,6 +15,9 @@ import openpyxl
 import db
 import embeds
 
+import shutil
+from pathlib import Path
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
@@ -200,6 +203,18 @@ async def reminder_loop():
             print("Reminder error:", e)
 
         await asyncio.sleep(60)
+
+def create_database_backup():
+    db_path = Path(db.DB_FILE)
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    backup_path = backup_dir / f"dynasty_backup_{timestamp}.db"
+
+    shutil.copy2(db_path, backup_path)
+
+    return backup_path
 
 
 player_group = app_commands.Group(name="player", description="Player management")
@@ -969,7 +984,28 @@ async def help_command(interaction: discord.Interaction):
         embed=embeds.make_help_embed(),
         ephemeral=True
     )
+backup_group = app_commands.Group(name="backup", description="Database backup commands")
 
+
+@backup_group.command(name="create", description="Create a manual database backup")
+@app_commands.checks.has_permissions(administrator=True)
+async def backup_create(interaction: discord.Interaction):
+    try:
+        backup_path = create_database_backup()
+
+        await interaction.response.send_message(
+            f"✅ Backup created:\n`{backup_path}`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Backup failed: `{e}`",
+            ephemeral=True
+        )
+
+
+tree.add_command(backup_group)
 
 @bot.event
 async def on_ready():
