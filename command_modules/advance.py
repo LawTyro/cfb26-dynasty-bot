@@ -10,37 +10,18 @@ from constants import stage_autocomplete
 from utils import get_output_channel, log_activity
 
 
-STAGE_ORDER = (
-    ["Preseason"]
-    + [f"Week {i}" for i in range(0, 16)]
-    + ["Conference Championship"]
-    + [f"Bowl Week {i}" for i in range(1, 5)]
-    + [
-        "End of Season Recap",
-        "Offseason Portal 1",
-        "Offseason Portal 2",
-        "Offseason Portal 3",
-        "Offseason Portal 4",
-        "National Signing Day",
-        "Training Results",
-        "Encourage Transfers",
-    ]
-)
-
-
-def get_next_stage(current_stage: str) -> str:
-    """Return the next dynasty stage, wrapping back to Preseason at the end."""
+def _next_stage(current_stage: str) -> str:
+    """Return the next week label for stages like "Week 1"."""
     current_stage = (current_stage or "").strip()
 
-    if not current_stage:
-        return "Preseason"
+    if current_stage.lower().startswith("week "):
+        try:
+            week_number = int(current_stage.split(None, 1)[1])
+            return f"Week {week_number + 1}"
+        except (IndexError, ValueError):
+            pass
 
-    try:
-        index = STAGE_ORDER.index(current_stage)
-    except ValueError:
-        return "Preseason"
-
-    return STAGE_ORDER[(index + 1) % len(STAGE_ORDER)]
+    return "Week 1"
 
 
 def setup(tree, bot):
@@ -49,8 +30,7 @@ def setup(tree, bot):
     async def advance(interaction: discord.Interaction, stage: str = None):
         days = int(db.get_setting("advance_days", "4"))
         new_end = datetime.now(timezone.utc) + timedelta(days=days)
-        current_stage = db.get_setting("advance_stage", "")
-        selected_stage = stage or get_next_stage(current_stage)
+        selected_stage = stage or _next_stage(db.get_setting("advance_stage", ""))
 
         try:
             create_database_backup()
@@ -58,11 +38,9 @@ def setup(tree, bot):
             print("Auto backup failed:", e)
 
         db.set_setting("advance_end", new_end.isoformat())
-
-        # Prevent the reminder loop from immediately sending a duplicate
-        # "4 days remaining" ping right after /advance starts.
+        # Prevent the reminder loop from sending a duplicate reminder immediately
+        # after the advance announcement.
         db.set_setting("last_reminder_day", str(days))
-
         db.set_bool_setting("all_ready_sent", False)
         db.set_setting("advance_stage", selected_stage)
         db.clear_ready()
@@ -73,28 +51,13 @@ def setup(tree, bot):
             description += f"\nAdvanced to: **{selected_stage}**"
 
         await interaction.response.send_message("✅ Advance started.", ephemeral=True)
-
-        # Send the initial advance announcement with @everyone.
-        # This is sent directly instead of through log_activity so the ping is guaranteed,
-        # while last_reminder_day still prevents the immediate duplicate reminder ping.
-        target_channel = get_output_channel(bot, interaction)
-
-        if target_channel:
-            embed = discord.Embed(
-                title="🏈 Advance Timer Started",
-                description=description,
-                color=discord.Color.gold(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            embed.set_footer(
-                text=f"Action by {interaction.user.display_name}"
-            )
-
-            await target_channel.send(
-                content="@everyone",
-                embed=embed,
-                allowed_mentions=discord.AllowedMentions(everyone=True)
-            )
+        await log_activity(
+            bot,
+            interaction,
+            "🏈 Advance Timer Started",
+            description,
+            discord.Color.gold()
+        )
 
     @tree.command(name="cancel", description="Cancel advance")
     @app_commands.checks.has_permissions(administrator=True)

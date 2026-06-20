@@ -5,6 +5,38 @@ import discord
 import db
 
 
+STAGE_ORDER = (
+    ["Preseason"]
+    + [f"Week {i}" for i in range(0, 16)]
+    + ["Conference Championship"]
+    + [f"Bowl Week {i}" for i in range(1, 5)]
+    + [
+        "End of Season Recap",
+        "Offseason Portal 1",
+        "Offseason Portal 2",
+        "Offseason Portal 3",
+        "Offseason Portal 4",
+        "National Signing Day",
+        "Training Results",
+        "Encourage Transfers",
+    ]
+)
+
+
+def get_next_stage(current_stage: str) -> str:
+    current_stage = (current_stage or "").strip()
+
+    if not current_stage:
+        return "Preseason"
+
+    try:
+        index = STAGE_ORDER.index(current_stage)
+    except ValueError:
+        return "Preseason"
+
+    return STAGE_ORDER[(index + 1) % len(STAGE_ORDER)]
+
+
 def get_remaining():
     advance_end = db.get_setting("advance_end", "")
 
@@ -30,6 +62,7 @@ def make_status_embed(guild):
 
     remaining = get_remaining()
     stage = db.get_setting("advance_stage", "")
+    next_stage = get_next_stage(stage)
 
     schedule_by_user = {}
 
@@ -73,6 +106,7 @@ def make_status_embed(guild):
 
         if stage:
             description += f"\n🏟️ **Current Stage:** {stage}"
+            description += f"\n⏭️ **Next Stage:** {next_stage}"
 
     elif remaining and remaining.total_seconds() <= 0:
         color = discord.Color.red()
@@ -80,6 +114,7 @@ def make_status_embed(guild):
 
         if stage:
             description += f"\n🏟️ **Current Stage:** {stage}"
+            description += f"\n⏭️ **Next Stage:** {next_stage}"
 
     else:
         color = discord.Color.dark_grey()
@@ -90,6 +125,7 @@ def make_status_embed(guild):
 
         if stage:
             description += f"\n🏟️ **Current Stage:** {stage}"
+            description += f"\n⏭️ **Next Stage:** {next_stage}"
 
     embed = discord.Embed(
         title="🏈 Dynasty Status",
@@ -125,7 +161,9 @@ def make_help_embed():
     embed.add_field(
         name="Advance",
         value=(
-            "`/advance` — Start/reset timer\n"
+            "`/advance` — Start/reset timer and roll stage\n"
+            "`/next` — Move to next stage without changing timer\n"
+            "`/previous` — Move to previous stage without changing timer\n"
             "`/cancel` — Cancel timer\n"
             "`/extend` — Add days to timer\n"
             "`/setdays` — Set default length\n"
