@@ -56,7 +56,9 @@ def setup(tree, bot):
             interaction,
             "🏈 Advance Timer Started",
             description,
-            discord.Color.gold()
+            discord.Color.gold(),
+            mention="@everyone",
+            allowed_mentions=discord.AllowedMentions(everyone=True)
         )
 
     @tree.command(name="cancel", description="Cancel advance")
