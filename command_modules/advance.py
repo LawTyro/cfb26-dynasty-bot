@@ -10,13 +10,27 @@ from constants import stage_autocomplete
 from utils import get_output_channel, log_activity
 
 
+def _next_stage(current_stage: str) -> str:
+    """Return the next week label for stages like "Week 1"."""
+    current_stage = (current_stage or "").strip()
+
+    if current_stage.lower().startswith("week "):
+        try:
+            week_number = int(current_stage.split(None, 1)[1])
+            return f"Week {week_number + 1}"
+        except (IndexError, ValueError):
+            pass
+
+    return "Week 1"
+
+
 def setup(tree, bot):
     @tree.command(name="advance", description="Start/reset advance timer")
     @app_commands.autocomplete(stage=stage_autocomplete)
     async def advance(interaction: discord.Interaction, stage: str = None):
         days = int(db.get_setting("advance_days", "4"))
         new_end = datetime.now(timezone.utc) + timedelta(days=days)
-        selected_stage = stage or ""
+        selected_stage = stage or _next_stage(db.get_setting("advance_stage", ""))
 
         try:
             create_database_backup()
@@ -24,7 +38,9 @@ def setup(tree, bot):
             print("Auto backup failed:", e)
 
         db.set_setting("advance_end", new_end.isoformat())
-        db.set_setting("last_reminder_day", "")
+        # Prevent the reminder loop from sending a duplicate reminder immediately
+        # after the advance announcement.
+        db.set_setting("last_reminder_day", str(days))
         db.set_bool_setting("all_ready_sent", False)
         db.set_setting("advance_stage", selected_stage)
         db.clear_ready()
@@ -40,9 +56,7 @@ def setup(tree, bot):
             interaction,
             "🏈 Advance Timer Started",
             description,
-            discord.Color.gold(),
-            mention="@everyone",
-            allowed_mentions=discord.AllowedMentions(everyone=True)
+            discord.Color.gold()
         )
 
     @tree.command(name="cancel", description="Cancel advance")
