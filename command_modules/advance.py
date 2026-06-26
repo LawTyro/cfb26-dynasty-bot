@@ -24,6 +24,22 @@ def _next_stage(current_stage: str) -> str:
     return "Week 1"
 
 
+def _previous_stage(current_stage: str) -> str:
+    """Return the previous week label for stages like "Week 1"."""
+    current_stage = (current_stage or "").strip()
+
+    if current_stage.lower().startswith("week "):
+        try:
+            week_number = int(current_stage.split(None, 1)[1])
+            if week_number > 1:
+                return f"Week {week_number - 1}"
+            return "Week 1"
+        except (IndexError, ValueError):
+            pass
+
+    return "Week 1"
+
+
 def setup(tree, bot):
     @tree.command(name="advance", description="Start/reset advance timer")
     @app_commands.autocomplete(stage=stage_autocomplete)
@@ -38,8 +54,6 @@ def setup(tree, bot):
             print("Auto backup failed:", e)
 
         db.set_setting("advance_end", new_end.isoformat())
-        # Prevent the reminder loop from sending a duplicate reminder immediately
-        # after the advance announcement.
         db.set_setting("last_reminder_day", str(days))
         db.set_bool_setting("all_ready_sent", False)
         db.set_setting("advance_stage", selected_stage)
@@ -115,4 +129,41 @@ def setup(tree, bot):
             "✅ Default Advance Length Updated",
             f"Default advance length set to **{days} day(s)**.",
             discord.Color.green()
+        )
+
+    @tree.command(name="next", description="Advance to next stage without resetting timer")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def next_stage(interaction: discord.Interaction):
+        current_stage = db.get_setting("advance_stage", "")
+        new_stage = _next_stage(current_stage)
+
+        db.set_setting("advance_stage", new_stage)
+
+        await interaction.response.send_message(f"✅ Stage updated to **{new_stage}**.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "⏭️ Stage Advanced",
+            f"Stage changed to: **{new_stage}**",
+            discord.Color.green()
+        )
+
+    @tree.command(name="previous", description="Go back to previous stage without resetting timer")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def previous_stage(interaction: discord.Interaction):
+        current_stage = db.get_setting("advance_stage", "")
+        new_stage = _previous_stage(current_stage)
+
+        if new_stage == current_stage:
+            return await interaction.response.send_message("Already at the earliest stage.", ephemeral=True)
+
+        db.set_setting("advance_stage", new_stage)
+
+        await interaction.response.send_message(f"✅ Stage updated to **{new_stage}**.", ephemeral=True)
+        await log_activity(
+            bot,
+            interaction,
+            "⏮️ Stage Reverted",
+            f"Stage changed to: **{new_stage}**",
+            discord.Color.orange()
         )
